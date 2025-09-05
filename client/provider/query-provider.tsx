@@ -36,7 +36,10 @@ export default function QueryProvider({
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ReactQueryDevtools initialIsOpen={false} />
+      <ReactQueryDevtools 
+        buttonPosition="top-left" // Position the button in the top-left corner
+        position="right" // Position the devtools panel on the right side
+      initialIsOpen={false} />
 
       {children}
       {/* Only show devtools in development */}

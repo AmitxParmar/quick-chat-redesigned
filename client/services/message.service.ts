@@ -27,6 +27,17 @@ export interface IAddMessageResponse {
   conversationId: string;
 }
 
+export interface IAddImageMessageRequest {
+  from: string;
+  to: string;
+  image: File | string;
+  type?: string;
+}
+
+export interface IUpdateMessageStatusRequest {
+  status: string;
+}
+
 // Fetch messages by conversation ID
 
 export async function getMessages(
@@ -44,4 +55,18 @@ export async function getMessages(
 export async function sendMessage(data: IAddMessageRequest) {
   const res = await api.post(API_BASE, data);
   return res.data.data as IAddMessageResponse;
+}
+// Add (send) an image message
+export async function addImageMessage(data: IAddImageMessageRequest) {
+  const res = await api.post(`${API_BASE}/image`, data);
+  return res.data.data as IAddMessageResponse;
+}
+
+// Update message status
+export async function updateMessageStatus(
+  messageId: string,
+  data: IUpdateMessageStatusRequest
+) {
+  const res = await api.put(`${API_BASE}/${messageId}/status`, data);
+  return res.data.data as Message;
 }

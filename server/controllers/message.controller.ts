@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import multer, { Multer } from "multer";
 import app from "../app";
 import { Message } from "../models/Message";
 import { Conversation } from "../models/Conversation";
@@ -15,12 +16,12 @@ interface AuthRequest extends Request {
  * @route GET /api/messages/:conversationId
  * @param {Request} req - Express request object (expects conversationId in params, page/limit in query)
  * @param {Response} res - Express response object
- * @returns {Promise<void>}
+ * @returns {Promise<Response>}
  * @description
  *   Fetches paginated messages for a given conversation.
  *   Returns messages and pagination info.
  */
-export const getMessages = async (req: AuthRequest, res: Response) => {
+export const getMessages = async (req: AuthRequest, res: Response): Promise<Response | void> => {
   try {
     if (!req.user) {
       return res.status(401).json({
@@ -297,6 +298,124 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
       success: false,
       message: "Failed to send message",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+
+/**
+ * Add an image message.
+ *
+ * @route POST /api/messages/image
+ * @param {Request} req - Express request object (expects file upload and from, to in query)
+ * @param {Response} res - Express response object
+ * @returns {Promise<void>}
+ * @description
+ *   Handles image message uploads, creates a new message with image type,
+ *   and stores the file path in the message.
+ */
+export const addImageMessage = async (req: AuthRequest, res: Response): Promise<Response | void> => {
+  try {
+    const fileReq = req as AuthRequest & { file?: Multer };
+    if (fileReq.file ) {
+      const date = new Date();
+      let fileName = `uploads/images/${date.getFullYear()}-${(
+        date.getMonth() + 1
+      )
+        .toString()
+        .padStart(2, "0")}-${date.getDate()}_${fileReq.file.originalname}`;
+      
+      const { from, to } = req.query;
+
+      if (from && to) {
+        // Find sender and receiver users
+        const senderUser = await User.findById(from);
+        const receiverUser = await User.findById(to);
+
+        if (!senderUser || !receiverUser) {
+      return res.status(404).json({
+        success: false,
+            message: "Sender or receiver not found",
+      });
+    }
+
+        const normalizeWaId = (id: string) =>
+          id?.startsWith("91") ? id.trim() : `91${id?.trim()}`;
+
+        const fromId = normalizeWaId(senderUser.waId);
+        const toId = normalizeWaId(receiverUser.waId);
+
+        // Find or create conversation
+        let conversation = await Conversation.findOne({
+          $and: [
+            { "participants.waId": fromId },
+            { "participants.waId": toId },
+            { participants: { $size: 2 } },
+          ],
+        });
+
+        if (!conversation) {
+          // Create new conversation
+          conversation = new Conversation({
+            participants: [
+              {
+                waId: fromId,
+                name: senderUser.name || `User ${fromId}`,
+                profilePicture: senderUser.profilePicture,
+      },
+              {
+                waId: toId,
+                name: receiverUser.name || `User ${toId}`,
+                profilePicture: receiverUser.profilePicture,
+              },
+            ],
+            lastMessage: {
+              text: "Image",
+              timestamp: Date.now(),
+              from: fromId,
+              status: "sent",
+            },
+            unreadCount: 1,
+    });
+
+          await conversation.save();
+        }
+
+        // Create new image message
+        const message = await Message.create({
+          conversationId: conversation._id,
+          from: fromId,
+          to: toId,
+          text: fileName,
+          timestamp: Date.now(),
+          status: "sent",
+          type: "image",
+          waId: fromId,
+          contact: {
+            name: senderUser.name || `User ${fromId}`,
+            waId: fromId,
+          },
+        });
+
+        // Update conversation's last message
+        conversation.lastMessage = {
+          text: "Image",
+          timestamp: message.timestamp,
+          from: fromId,
+          status: "sent",
+};
+        conversation.unreadCount += 1;
+        await conversation.save();
+        return res.status(201).json({ message });
+      }
+      return res.status(400).send("From, to is required");
+    }
+    return res.status(400).send("Image is required");
+  } catch (err) {
+    console.error("Error adding image message:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add image message",
+      error: err instanceof Error ? err.message : "Unknown error",
     });
   }
 };

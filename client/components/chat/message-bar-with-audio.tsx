@@ -1,27 +1,35 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
-import { Mic, Plus, SendHorizontal, Smile } from "lucide-react";
+import { Mic, Plus, SendHorizontal, Smile, Contact, AudioLines, Video, Image } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useSendMessage } from "@/hooks/useMessages";
 import { useUserStore } from "@/store/useUserStore";
 import useAuth from "@/hooks/useAuth";
 import { AudioRecorder } from "./audio-recorder";
+import { useAudioRecorderModal } from "@/hooks/useAudioRecorderModal";
 
-function MessageBar({ }) {
+function MessageBarWithAudio() {
   const { activeChatUser } = useUserStore((state) => state);
   const { user: activeUser } = useAuth();
   const { mutate: sendMessage } = useSendMessage();
+  const { isOpen: showAudioRecorder, openRecorder, closeRecorder } = useAudioRecorderModal();
+  
   const [message, setMessage] = useState("");
-  const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [showEmojiPicker, setEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement; // Cast to HTMLElement
+      const target = event.target as HTMLElement;
       if (target.id !== "emoji-open") {
         if (
           emojiPickerRef.current &&
@@ -87,16 +95,26 @@ function MessageBar({ }) {
     }
   };
 
-  // Handle mic button click
   const handleMicClick = () => {
     if (message.length === 0) {
-      setShowAudioRecorder(true);
+      openRecorder();
     }
   };
 
-  // Handle closing audio recorder
-  const handleCloseAudioRecorder = () => {
-    setShowAudioRecorder(false);
+  const handleContactClick = () => {
+    console.log("Contact clicked");
+  };
+
+  const handleAudioClick = () => {
+    console.log("Audio clicked");
+  };
+
+  const handleVideoClick = () => {
+    console.log("Video clicked");
+  };
+
+  const handleImageClick = () => {
+    console.log("Image clicked");
   };
 
   return (
@@ -104,13 +122,35 @@ function MessageBar({ }) {
       {!showAudioRecorder && (
         <>
           <div className="flex relative items-center h-full max-w-3xs">
-            <Button
-              size={"icon"}
-              className="size-10 flex bg-transparent text-primary items-center justify-center rounded-full hover:bg-searchbar/50 transition-colors duration-150"
-              tabIndex={0}
-            >
-              <Plus className="text-panel-header-icon cursor-pointer size-6" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size={"icon"}
+                  className="size-10 flex bg-transparent text-primary items-center justify-center rounded-full hover:bg-searchbar/50 transition-colors duration-150"
+                  tabIndex={0}
+                >
+                  <Plus className="text-panel-header-icon cursor-pointer size-6" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onClick={handleContactClick}>
+                  <Contact className="mr-2 h-4 w-4" />
+                  Contact
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleAudioClick}>
+                  <AudioLines className="mr-2 h-4 w-4" />
+                  Audio
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleVideoClick}>
+                  <Video className="mr-2 h-4 w-4" />
+                  Video
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleImageClick}>
+                  <Image className="mr-2 h-4 w-4" />
+                  Image
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               size={"icon"}
               className="size-10 flex bg-transparent text-primary items-center justify-center rounded-full hover:bg-searchbar/50 transition-colors duration-150"
@@ -155,12 +195,9 @@ function MessageBar({ }) {
           </div>
         </>
       )}
-
-      {showAudioRecorder && (
-        <AudioRecorder onClose={handleCloseAudioRecorder} />
-      )}
+      {showAudioRecorder && <AudioRecorder onClose={closeRecorder} />}
     </div>
   );
 }
 
-export default MessageBar;
+export default MessageBarWithAudio;

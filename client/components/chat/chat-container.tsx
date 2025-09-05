@@ -4,7 +4,7 @@ import { useMessages } from "@/hooks/useMessages";
 import { useAutoMarkAsRead } from "@/hooks/useConversations";
 import { memo, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, XCircle } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import useAuth from "./../../hooks/useAuth";
 
 /**

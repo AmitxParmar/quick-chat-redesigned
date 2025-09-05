@@ -1,6 +1,6 @@
 import { env } from "./config/env";
 import { connectDB } from "./config/db";
-import app from "./app";
+import app, { initializeSocketHandler } from "./app";
 import http from "http";
 import { Server as SocketIOServer } from "socket.io";
 
@@ -16,16 +16,23 @@ async function start() {
     },
   });
 
+  // Initialize socket handler for user status management
+  const socketHandler = initializeSocketHandler(io);
+
+  // Additional socket events for conversation management
   io.on("connection", (socket) => {
+    console.log(`Socket connected: ${socket.id}`);
+
     // Client can optionally join a specific conversation room
     socket.on("conversation:join", (conversationId: string) => {
       if (typeof conversationId === "string" && conversationId.length > 0) {
         socket.join(conversationId);
+        console.log(`Socket ${socket.id} joined conversation: ${conversationId}`);
       }
     });
 
     socket.on("disconnect", () => {
-      // No-op for now
+      console.log(`Socket disconnected: ${socket.id}`);
     });
   });
 

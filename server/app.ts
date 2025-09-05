@@ -3,11 +3,13 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import pino from "pino";
 import pinoHttp from "pino-http";
+import path from "path";
 import { env } from "./config/env";
 import authRoutes from "./routes/auth.route";
 import conversationRoutes from "./routes/conversation.route";
 import messageRoutes from "./routes/message.route";
 import contactRoutes from "./routes/contacts.route";
+import SocketHandler from "./socket";
 
 // Use pino-pretty for more readable logs
 const logger = pino({
@@ -24,7 +26,10 @@ const logger = pino({
 
 const app = express();
 const allowedClientUrls = [env.clientUrl, "http://localhost:3000"];
-export type AppWithIO = typeof app & { io?: import("socket.io").Server };
+export type AppWithIO = typeof app & { 
+  io?: import("socket.io").Server;
+  socketHandler?: SocketHandler;
+};
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -35,6 +40,9 @@ app.use(
     credentials: true,
   })
 );
+
+// Serve static files
+app.use(express.static(path.join(__dirname, "public")));
 
 app.use(
   pinoHttp({
@@ -94,4 +102,22 @@ app.use("/api/conversations", conversationRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/contacts", contactRoutes);
 
+// Debug route to check online users
+app.get("/api/debug/online-users", (req, res) => {
+  const appWithIO = app as AppWithIO;
+  if (appWithIO.socketHandler) {
+    const onlineUsers = appWithIO.socketHandler.getOnlineUsers();
+    res.json({ onlineUsers, totalUsers: onlineUsers.length });
+  } else {
+    res.json({ error: "Socket handler not initialized" });
+  }
+});
+
 export default app;
+
+// Initialize socket handler when io is attached
+export const initializeSocketHandler = (io: import("socket.io").Server) => {
+  const socketHandler = new SocketHandler(io);
+  (app as AppWithIO).socketHandler = socketHandler;
+  return socketHandler;
+};

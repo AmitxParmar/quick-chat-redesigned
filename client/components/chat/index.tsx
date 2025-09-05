@@ -6,6 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
 import { useUserStore } from "@/store/useUserStore";
+import MessageBarWithAudio from "./message-bar-with-audio";
 
 function Chat({
   conversationId,
@@ -28,7 +29,7 @@ function Chat({
       <div className="w-screen lg:w-full flex flex-col h-screen z-10">
         <ChatHeader />
         <ChatContainer conversationId={conversationId} />
-        <MessageBar />
+        <MessageBarWithAudio />
       </div>
     </div>
   );
