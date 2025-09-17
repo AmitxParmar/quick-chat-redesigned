@@ -137,6 +137,169 @@ export const getMessages = async (req: AuthRequest, res: Response): Promise<Resp
 };
 
 /**
+ * Search messages across conversations.
+ *
+ * @route GET /api/messages/search
+ * @param {Request} req - Express request object (expects query, conversationId (optional), page/limit in query)
+ * @param {Response} res - Express response object
+ * @returns {Promise<Response>}
+ * @description
+ *   Searches for messages containing the specified text query.
+ *   Can be filtered by conversation or search across all user's conversations.
+ *   Returns paginated search results with message context.
+ */
+export const searchMessages = async (req: AuthRequest, res: Response): Promise<Response | void> => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const { query, conversationId } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 25;
+    const skip = (page - 1) * limit;
+    // Validate required fields
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required",
+      });
+    }
+
+        const normalizeWaId = (id: string) =>
+          id?.startsWith("91") ? id.trim() : `91${id?.trim()}`;
+    const currentWaId = normalizeWaId(req.user.waId);
+
+    // Build search filter
+    let searchFilter: any = {
+      $or: [
+        { from: currentWaId },
+        { to: currentWaId }
+          ],
+      text: { $regex: query.trim(), $options: 'i' }
+    };
+
+    // If conversationId is provided, filter by specific conversation
+    if (conversationId) {
+      let resolvedConversationId: string = conversationId as string;
+      
+      if (!mongoose.Types.ObjectId.isValid(resolvedConversationId)) {
+        // Try to resolve by public conversationId
+        const convByPublicId = await Conversation.findOne({
+          conversationId: resolvedConversationId,
+        })
+          .select({ _id: 1 })
+          .lean();
+        
+        if (!convByPublicId?._id) {
+      return res.status(400).json({
+        success: false,
+            message: "Invalid conversation ID",
+      });
+    }
+        resolvedConversationId = convByPublicId._id.toString();
+      }
+
+      // Verify user is participant in the conversation
+      const conversation = await Conversation.findById(
+        new mongoose.Types.ObjectId(resolvedConversationId)
+      ).lean();
+      
+      if (!conversation) {
+        return res.status(404).json({
+        success: false,
+          message: "Conversation not found",
+      });
+    }
+
+      const isParticipant = Array.isArray(conversation.participants)
+        ? conversation.participants.some((p: any) => p?.waId === currentWaId)
+        : false;
+
+      if (!isParticipant) {
+        return res.status(403).json({
+        success: false,
+          message: "You are not a participant in this conversation",
+      });
+    }
+
+      searchFilter.conversationId = new mongoose.Types.ObjectId(resolvedConversationId);
+    } else {
+      // If no specific conversation, get all conversations user participates in
+      const userConversations = await Conversation.find({
+        "participants.waId": currentWaId
+      })
+        .select({ _id: 1 })
+        .lean();
+
+      const conversationIds = userConversations.map(conv => conv._id);
+      searchFilter.conversationId = { $in: conversationIds };
+    }
+
+    console.log("[searchMessages] Search filter:", JSON.stringify(searchFilter, null, 2));
+
+    // Execute search with pagination
+    const messages = await Message.find(searchFilter)
+      .sort({ timestamp: -1 }) // Descending order: newest first for search results
+      .skip(skip)
+      .limit(limit)
+      .populate('conversationId', 'participants')
+      .lean();
+
+    // Get total count for pagination
+    const totalMessages = await Message.countDocuments(searchFilter);
+
+    // Enhance results with conversation context
+    const enhancedMessages = messages.map(message => {
+      const conversation = message.conversationId as any;
+      let otherParticipant = null;
+      
+      if (conversation && Array.isArray(conversation.participants)) {
+        otherParticipant = conversation.participants.find(
+          (p: any) => p?.waId !== currentWaId
+      );
+    }
+
+      return {
+        ...message,
+        conversationContext: {
+          conversationId: conversation?._id,
+          otherParticipant: otherParticipant ? {
+            waId: otherParticipant.waId,
+            name: otherParticipant.name,
+            profilePicture: otherParticipant.profilePicture
+          } : null
+        }
+      };
+    });
+
+    console.log(`[searchMessages] Found ${messages.length} messages for query: "${query}"`);
+    res.status(200).json({
+      success: true,
+      data: {
+        messages: enhancedMessages,
+        searchQuery: query,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(totalMessages / limit),
+          totalMessages,
+          hasMore: skip + messages.length < totalMessages,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error searching messages:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to search messages",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+/**
  * Send a new message.
  *
  * @route POST /api/messages

@@ -79,8 +79,8 @@ function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background transition-colors">
-      <div className="w-full max-w-sm bg-card rounded-xl shadow-lg p-8 flex flex-col items-center border border-border">
+    <div className="min-h-screen flex items-center justify-center bg-secondary transition-colors">
+      <div className="w-full max-w-sm bg-black rounded-xl shadow-lg p-8 flex flex-col items-center border border-gray-800">
         <div className="flex items-center gap-2 mb-6">
           <div className="rounded-full p-2 bg-primary">
             <svg
@@ -96,11 +96,11 @@ function LoginPage() {
               />
             </svg>
           </div>
-          <span className="text-2xl font-bold tracking-tight text-primary">
+          <span className="text-2xl font-bold tracking-tight text-white">
             WhatsApp
           </span>
         </div>
-        <h2 className="text-xl font-semibold mb-4 text-primary-foreground">
+        <h2 className="text-xl font-semibold mb-4 text-white">
           Login
         </h2>
         <Form {...form}>
@@ -114,9 +114,9 @@ function LoginPage() {
               name="waId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>WA ID</FormLabel>
+                  <FormLabel className="text-gray-200">WA ID</FormLabel>
                   <FormControl>
-                    <Input placeholder="WA ID" autoFocus {...field} />
+                    <Input placeholder="WA ID" autoFocus {...field} className="bg-gray-900 border-gray-700 text-white placeholder:text-gray-400" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -127,9 +127,9 @@ function LoginPage() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel className="text-gray-200">Password</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Password" {...field} />
+                    <Input type="password" placeholder="Password" {...field} className="bg-gray-900 border-gray-700 text-white placeholder:text-gray-400" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -151,7 +151,7 @@ function LoginPage() {
           </form>
         </Form>
         <div className="w-full mt-6">
-          <div className="text-muted-foreground text-xs mb-2 text-center">
+          <div className="text-gray-400 text-xs mb-2 text-center">
             Demo Accounts
           </div>
           <div className="flex flex-col gap-2">
@@ -159,7 +159,7 @@ function LoginPage() {
               <button
                 key={demo.waId}
                 type="button"
-                className="w-full flex items-center justify-between px-3 py-2 border border-accent rounded bg-accent hover:bg-accent/80 text-accent-foreground text-sm transition"
+                className="w-full flex items-center justify-between px-3 py-2 border border-gray-700 rounded bg-gray-900 hover:bg-gray-800 text-gray-200 text-sm transition"
                 onClick={() => handleDemoClick(demo)}
               >
                 <span>
@@ -172,7 +172,7 @@ function LoginPage() {
             ))}
           </div>
         </div>
-        <div className="w-full mt-6 text-sm text-center text-muted-foreground">
+        <div className="w-full mt-6 text-sm text-center text-gray-400">
           New to WhatsApp?{" "}
           <Link href="/register" className="text-primary hover:underline">
             Create account

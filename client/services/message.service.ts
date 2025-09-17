@@ -38,6 +38,17 @@ export interface IUpdateMessageStatusRequest {
   status: string;
 }
 
+export interface ISearchMessagesRequest {
+  query: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ISearchMessagesResponse {
+  messages: Message[];
+  pagination: IMessagePagination;
+}
+
 // Fetch messages by conversation ID
 
 export async function getMessages(
@@ -51,6 +62,16 @@ export async function getMessages(
   return res.data.data as IMessageResponse;
 }
 
+// Search messages in a conversation
+export async function searchMessages(
+  conversationId: string,
+  queries?: ISearchMessagesRequest
+) {
+  const res = await api.get(`${API_BASE}/search/${conversationId}`, {
+    params: queries,
+  });
+  return res.data.data as ISearchMessagesResponse;
+}
 // Add (send) a new message
 export async function sendMessage(data: IAddMessageRequest) {
   const res = await api.post(API_BASE, data);
