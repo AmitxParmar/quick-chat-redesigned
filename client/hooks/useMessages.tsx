@@ -32,15 +32,15 @@ function getSocket() {
 export function useMessages(conversationId: string) {
   const qc = useQueryClient();
   const listenerRef = useRef<
-    ((payload: { message: any; conversationId: string }) => void) | null
+    ((payload: { message: Message; conversationId: string }) => void) | null
   >(null);
   const statusUpdateListenerRef = useRef<
     | ((payload: {
-        messageId: string;
-        conversationId: string;
-        status: string;
-        message: any;
-      }) => void)
+      messageId: string;
+      conversationId: string;
+      status: string;
+      message: Message;
+    }) => void)
     | null
   >(null);
 
@@ -50,8 +50,12 @@ export function useMessages(conversationId: string) {
 
     const socket = getSocket();
 
+    console.log("[Socket] Setting up listeners for conversation:", conversationId);
+    console.log("[Socket] Socket connected:", socket.connected);
+
     // Join the conversation room on the server
     socket.emit("conversation:join", conversationId);
+    console.log("[Socket] Emitted conversation:join for:", conversationId);
 
     // Create a unique listener for this conversation
     const onMessageCreated = (payload: {
@@ -61,7 +65,7 @@ export function useMessages(conversationId: string) {
       if (!payload || payload.conversationId !== conversationId) return;
 
       console.log(
-        "Socket: message:created received for conversation:",
+        "[Socket] message:created received for conversation:",
         conversationId
       );
 
@@ -96,6 +100,8 @@ export function useMessages(conversationId: string) {
           }
         }
 
+        // Prepend new message to the FIRST page (index 0)
+        // Backend returns newest first, so page 0 contains most recent messages
         const newPages = oldData.pages.map((page: MessagePage, idx: number) => {
           if (idx === 0) {
             const oldMessages = Array.isArray(page.messages)
@@ -113,6 +119,8 @@ export function useMessages(conversationId: string) {
           return page;
         });
 
+        console.log("[Socket] Added new message to first page (newest messages)");
+
         return {
           ...oldData,
           pages: newPages,
@@ -126,14 +134,24 @@ export function useMessages(conversationId: string) {
       conversationId: string;
       status: string;
       message: Message;
+      updatedBy?: string;
     }) => {
-      if (!payload || payload.conversationId !== conversationId) return;
+      if (!payload || payload.conversationId !== conversationId) {
+        console.log(
+          "[Socket] message:status-updated ignored - different conversation",
+          { received: payload?.conversationId, expected: conversationId }
+        );
+        return;
+      }
 
       console.log(
-        "Socket: message:status-updated received for message:",
-        payload.messageId,
-        "status:",
-        payload.status
+        "[Socket] message:status-updated received:",
+        {
+          messageId: payload.messageId,
+          status: payload.status,
+          updatedBy: payload.updatedBy,
+          conversationId: payload.conversationId
+        }
       );
 
       // Update the message status in the cache
@@ -144,6 +162,9 @@ export function useMessages(conversationId: string) {
           ...page,
           messages: page.messages.map((msg: Message) => {
             if (msg._id === payload.messageId) {
+              console.log(
+                `[Socket] Updating message ${msg._id} status from ${msg.status} to ${payload.status}`
+              );
               return { ...msg, status: payload.status };
             }
             return msg;
@@ -165,8 +186,11 @@ export function useMessages(conversationId: string) {
     socket.on("message:created", onMessageCreated);
     socket.on("message:status-updated", onMessageStatusUpdated);
 
+    console.log("[Socket] Listeners registered for conversation:", conversationId);
+
     // Cleanup function
     return () => {
+      console.log("[Socket] Cleaning up listeners for conversation:", conversationId);
       if (listenerRef.current) {
         socket.off("message:created", listenerRef.current);
         listenerRef.current = null;
@@ -211,9 +235,11 @@ export function useMessages(conversationId: string) {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<IAddMessageResponse, unknown, IAddMessageRequest>({
-    mutationFn: (data) => sendMessage(data),
-    onSuccess: (data, _) => {
+    mutationFn: (data) => {
       // Only update conversations cache - messages cache will be updated by socket
+      return sendMessage(data)
+    },
+    onSuccess: (data, _) => {
       qc.setQueryData(
         ["conversations"],
         (oldConvo: Conversation[] | undefined) => {

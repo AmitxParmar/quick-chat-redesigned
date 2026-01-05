@@ -35,11 +35,11 @@ export function useConversations() {
   );
   const markAsReadListenerRef = useRef<
     | ((payload: {
-        conversationId: string;
-        waId: string;
-        updatedMessages: number;
-        conversation: Conversation;
-      }) => void)
+      conversationId: string;
+      waId: string;
+      updatedMessages: number;
+      conversation: Conversation;
+    }) => void)
     | null
   >(null);
 
@@ -90,10 +90,18 @@ export function useConversations() {
       updatedMessages: number;
       conversation: Conversation;
     }) => {
-      console.log("Socket: messages:marked-as-read received:", payload);
+      console.log("[Socket] messages:marked-as-read received:", {
+        conversationId: payload.conversationId,
+        waId: payload.waId,
+        updatedMessages: payload.updatedMessages,
+        currentUser: user.waId,
+      });
 
       // Only update if this is for the current user
-      if (payload.waId !== user.waId) return;
+      if (payload.waId !== user.waId) {
+        console.log("[Socket] messages:marked-as-read ignored - different user");
+        return;
+      }
 
       // Update the conversations cache with the updated conversation
       qc.setQueryData(
@@ -105,13 +113,19 @@ export function useConversations() {
             (convo) => convo._id === payload.conversationId
           );
 
-          if (idx === -1) return oldConvo;
+          if (idx === -1) {
+            console.log("[Socket] Conversation not found in cache");
+            return oldConvo;
+          }
 
           // Update the conversation with new status
           const updatedConvo = {
             ...oldConvo[idx],
             ...payload.conversation,
           };
+
+          console.log("[Socket] Updated conversation unreadCount:", updatedConvo.unreadCount);
+
           return [
             updatedConvo,
             ...oldConvo.slice(0, idx),

@@ -96,7 +96,7 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
     const messages = await Message.find({
       conversationId: new mongoose.Types.ObjectId(resolvedConversationId),
     })
-      .sort({ timestamp: 1 }) // Ascending order: oldest first for chat display
+      .sort({ timestamp: -1 }) // Descending order: newest first for pagination (WhatsApp-like)
       .skip(skip)
       .limit(limit)
       .lean();
@@ -136,6 +136,172 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
 };
 
 /**
+<<<<<<< Updated upstream
+=======
+ * Search messages across conversations.
+ *
+ * @route GET /api/messages/search
+ * @param {Request} req - Express request object (expects query, conversationId (optional), page/limit in query)
+ * @param {Response} res - Express response object
+ * @returns {Promise<Response>}
+ * @description
+ *   Searches for messages containing the specified text query.
+ *   Can be filtered by conversation or search across all user's conversations.
+ *   Returns paginated search results with message context.
+ */
+export const searchMessages = async (req: AuthRequest, res: Response): Promise<Response | void> => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    const { query, conversationId } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 25;
+    const skip = (page - 1) * limit;
+    // Validate required fields
+    if (!query || typeof query !== 'string' || query.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Search query is required",
+      });
+    }
+
+    const normalizeWaId = (id: string) =>
+      id?.startsWith("91") ? id.trim() : `91${id?.trim()}`;
+    const currentWaId = normalizeWaId(req.user.waId);
+
+    // Build search filter
+    let searchFilter: any = {
+      $or: [
+        { from: currentWaId },
+        { to: currentWaId }
+      ],
+      text: { $regex: query.trim(), $options: 'i' }
+    };
+
+    // If conversationId is provided, filter by specific conversation
+    if (conversationId) {
+      let resolvedConversationId: string = conversationId as string;
+
+      if (!mongoose.Types.ObjectId.isValid(resolvedConversationId)) {
+        // Try to resolve by public conversationId
+        const convByPublicId = await Conversation.findOne({
+          conversationId: resolvedConversationId,
+        })
+          .select({ _id: 1 })
+          .lean();
+
+        if (!convByPublicId?._id) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid conversation ID",
+          });
+        }
+        resolvedConversationId = convByPublicId._id.toString();
+      }
+
+      // Verify user is participant in the conversation
+      const conversation = await Conversation.findById(
+        new mongoose.Types.ObjectId(resolvedConversationId)
+      ).lean();
+
+      if (!conversation) {
+        return res.status(404).json({
+          success: false,
+          message: "Conversation not found",
+        });
+      }
+
+      const isParticipant = Array.isArray(conversation.participants)
+        ? conversation.participants.some((p: any) => p?.waId === currentWaId)
+        : false;
+
+      if (!isParticipant) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not a participant in this conversation",
+        });
+      }
+
+      searchFilter.conversationId = new mongoose.Types.ObjectId(resolvedConversationId);
+    } else {
+      // If no specific conversation, get all conversations user participates in
+      const userConversations = await Conversation.find({
+        "participants.waId": currentWaId
+      })
+        .select({ _id: 1 })
+        .lean();
+
+      const conversationIds = userConversations.map(conv => conv._id);
+      searchFilter.conversationId = { $in: conversationIds };
+    }
+
+    console.log("[searchMessages] Search filter:", JSON.stringify(searchFilter, null, 2));
+
+    // Execute search with pagination
+    const messages = await Message.find(searchFilter)
+      .sort({ timestamp: -1 }) // Descending order: newest first for search results
+      .skip(skip)
+      .limit(limit)
+      .populate('conversationId', 'participants')
+      .lean();
+
+    // Get total count for pagination
+    const totalMessages = await Message.countDocuments(searchFilter);
+
+    // Enhance results with conversation context
+    const enhancedMessages = messages.map(message => {
+      const conversation = message.conversationId as any;
+      let otherParticipant = null;
+
+      if (conversation && Array.isArray(conversation.participants)) {
+        otherParticipant = conversation.participants.find(
+          (p: any) => p?.waId !== currentWaId
+        );
+      }
+
+      return {
+        ...message,
+        conversationContext: {
+          conversationId: conversation?._id,
+          otherParticipant: otherParticipant ? {
+            waId: otherParticipant.waId,
+            name: otherParticipant.name,
+            profilePicture: otherParticipant.profilePicture
+          } : null
+        }
+      };
+    });
+
+    console.log(`[searchMessages] Found ${messages.length} messages for query: "${query}"`);
+    res.status(200).json({
+      success: true,
+      data: {
+        messages: enhancedMessages,
+        searchQuery: query,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(totalMessages / limit),
+          totalMessages,
+          hasMore: skip + messages.length < totalMessages,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error searching messages:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to search messages",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+};
+/**
+>>>>>>> Stashed changes
  * Send a new message.
  *
  * @route POST /api/messages
@@ -222,8 +388,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 
       await conversation.save();
       console.log(
-        `[sendMessage] created conversationId=${
-          conversation._id
+        `[sendMessage] created conversationId=${conversation._id
         } participants=${conversation.participants
           .map((p: any) => p.waId)
           .join(",")}`
@@ -267,8 +432,8 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
         typeof conversation._id === "string"
           ? conversation._id
           : conversation._id && typeof conversation._id.toString === "function"
-          ? conversation._id.toString()
-          : "";
+            ? conversation._id.toString()
+            : "";
 
       const payload = {
         message: newMessage,
@@ -302,6 +467,127 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 };
 
 /**
+<<<<<<< Updated upstream
+=======
+ * Add an image message.
+ *
+ * @route POST /api/messages/image
+ * @param {Request} req - Express request object (expects file upload and from, to in query)
+ * @param {Response} res - Express response object
+ * @returns {Promise<void>}
+ * @description
+ *   Handles image message uploads, creates a new message with image type,
+ *   and stores the file path in the message.
+ */
+export const addImageMessage = async (req: AuthRequest, res: Response): Promise<Response | void> => {
+  try {
+    const fileReq = req as AuthRequest & { file?: Multer };
+    if (fileReq.file) {
+      const date = new Date();
+      let fileName = `uploads/images/${date.getFullYear()}-${(
+        date.getMonth() + 1
+      )
+        .toString()
+        .padStart(2, "0")}-${date.getDate()}_${fileReq.file.originalname}`;
+
+      const { from, to } = req.query;
+
+      if (from && to) {
+        // Find sender and receiver users
+        const senderUser = await User.findById(from);
+        const receiverUser = await User.findById(to);
+
+        if (!senderUser || !receiverUser) {
+          return res.status(404).json({
+            success: false,
+            message: "Sender or receiver not found",
+          });
+        }
+
+        const normalizeWaId = (id: string) =>
+          id?.startsWith("91") ? id.trim() : `91${id?.trim()}`;
+
+        const fromId = normalizeWaId(senderUser.waId);
+        const toId = normalizeWaId(receiverUser.waId);
+
+        // Find or create conversation
+        let conversation = await Conversation.findOne({
+          $and: [
+            { "participants.waId": fromId },
+            { "participants.waId": toId },
+            { participants: { $size: 2 } },
+          ],
+        });
+
+        if (!conversation) {
+          // Create new conversation
+          conversation = new Conversation({
+            participants: [
+              {
+                waId: fromId,
+                name: senderUser.name || `User ${fromId}`,
+                profilePicture: senderUser.profilePicture,
+              },
+              {
+                waId: toId,
+                name: receiverUser.name || `User ${toId}`,
+                profilePicture: receiverUser.profilePicture,
+              },
+            ],
+            lastMessage: {
+              text: "Image",
+              timestamp: Date.now(),
+              from: fromId,
+              status: "sent",
+            },
+            unreadCount: 1,
+          });
+
+          await conversation.save();
+        }
+
+        // Create new image message
+        const message = await Message.create({
+          conversationId: conversation._id,
+          from: fromId,
+          to: toId,
+          text: fileName,
+          timestamp: Date.now(),
+          status: "sent",
+          type: "image",
+          waId: fromId,
+          contact: {
+            name: senderUser.name || `User ${fromId}`,
+            waId: fromId,
+          },
+        });
+
+        // Update conversation's last message
+        conversation.lastMessage = {
+          text: "Image",
+          timestamp: message.timestamp,
+          from: fromId,
+          status: "sent",
+        };
+        conversation.unreadCount += 1;
+        await conversation.save();
+        return res.status(201).json({ message });
+      }
+      return res.status(400).send("From, to is required");
+    }
+    return res.status(400).send("Image is required");
+  } catch (err) {
+    console.error("Error adding image message:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to add image message",
+      error: err instanceof Error ? err.message : "Unknown error",
+    });
+  }
+};
+
+/**
+>>>>>>> Stashed changes
  * Update message delivery status.
  *
  * @route PUT /api/messages/:messageId/status

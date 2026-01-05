@@ -128,8 +128,7 @@ export const getConversationId = async (
     const savedConversation = await newConversation.save();
 
     console.log(
-      `[getConversationId] created conversationId=${
-        savedConversation._id
+      `[getConversationId] created conversationId=${savedConversation._id
       } participants=${participants.map((p) => p.waId).join(",")}`
     );
 
@@ -417,26 +416,46 @@ export const markAsRead = async (
       updatedConversation?.lastMessage
     );
 
+    // Get all messages that were updated to 'read' for detailed socket events
+    const affectedMessages = await Message.find({
+      conversationId,
+      to: waId,
+      status: "read", // Now they're all marked as read
+    }).select('_id from to conversationId').lean();
+
+    console.log(`[markAsRead] Found ${affectedMessages.length} messages marked as read`);
+
     // Emit socket events to notify clients about the status update
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const io = (app as any).io as import("socket.io").Server | undefined;
     if (io && updatedConversation) {
       const convId = updatedConversation._id?.toString() || "";
 
-      // Emit conversation update to all clients
-      io.emit("conversation:updated", updatedConversation);
+      // Emit to conversation room for targeted delivery
+      io.to(convId).emit("conversation:updated", updatedConversation);
 
-      // Emit specific message status update event
-      io.emit("messages:marked-as-read", {
+      // Emit specific bulk mark-as-read event
+      io.to(convId).emit("messages:marked-as-read", {
         conversationId: convId,
         waId,
         updatedMessages: updateResult.modifiedCount,
         conversation: updatedConversation,
       });
 
+      // Emit individual message status updates for each read message
+      // This ensures senders get real-time read receipts
+      affectedMessages.forEach((msg) => {
+        io.to(convId).emit("message:status-updated", {
+          messageId: msg._id.toString(),
+          conversationId: convId,
+          status: "read",
+          message: msg,
+          updatedBy: waId,
+        });
+      });
+
       console.log(
-        "[markAsRead] Emitted socket events for conversation:",
-        convId
+        `[markAsRead] Emitted socket events for conversation: ${convId}, affected messages: ${affectedMessages.length}`
       );
     }
 
@@ -446,6 +465,7 @@ export const markAsRead = async (
       lastMessageStatusUpdated: lastMessageUpdated,
       lastMessageBefore: conversation.lastMessage,
       lastMessageAfter: updatedConversation?.lastMessage,
+      affectedMessagesCount: affectedMessages.length,
     });
   } catch (error) {
     console.error("Error marking messages as read:", error);

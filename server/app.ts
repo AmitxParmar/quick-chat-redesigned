@@ -8,7 +8,14 @@ import authRoutes from "./routes/auth.route";
 import conversationRoutes from "./routes/conversation.route";
 import messageRoutes from "./routes/message.route";
 import contactRoutes from "./routes/contacts.route";
+<<<<<<< Updated upstream
+=======
+import SocketHandler from "./socket";
+import { fileURLToPath } from "url";
+>>>>>>> Stashed changes
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 // Use pino-pretty for more readable logs
 const logger = pino({
   transport: {
@@ -24,7 +31,14 @@ const logger = pino({
 
 const app = express();
 const allowedClientUrls = [env.clientUrl, "http://localhost:3000"];
+<<<<<<< Updated upstream
 export type AppWithIO = typeof app & { io?: import("socket.io").Server };
+=======
+export type AppWithIO = typeof app & {
+  io?: import("socket.io").Server;
+  socketHandler?: SocketHandler;
+};
+>>>>>>> Stashed changes
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -60,9 +74,9 @@ app.use(
       // error may be the error object or the response, so check for message
       const message =
         error &&
-        typeof error === "object" &&
-        "message" in error &&
-        typeof (error as any).message === "string"
+          typeof error === "object" &&
+          "message" in error &&
+          typeof (error as any).message === "string"
           ? (error as any).message
           : "Unknown error";
       const statusCode =
