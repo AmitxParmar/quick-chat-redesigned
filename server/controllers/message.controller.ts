@@ -136,8 +136,6 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
 };
 
 /**
-<<<<<<< Updated upstream
-=======
  * Search messages across conversations.
  *
  * @route GET /api/messages/search
@@ -301,7 +299,6 @@ export const searchMessages = async (req: AuthRequest, res: Response): Promise<R
   }
 };
 /**
->>>>>>> Stashed changes
  * Send a new message.
  *
  * @route POST /api/messages
@@ -467,8 +464,6 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
 };
 
 /**
-<<<<<<< Updated upstream
-=======
  * Add an image message.
  *
  * @route POST /api/messages/image
@@ -481,7 +476,7 @@ export const sendMessage = async (req: AuthRequest, res: Response) => {
  */
 export const addImageMessage = async (req: AuthRequest, res: Response): Promise<Response | void> => {
   try {
-    const fileReq = req as AuthRequest & { file?: Multer };
+    const fileReq = req as AuthRequest & { file?: Express.Multer.File };
     if (fileReq.file) {
       const date = new Date();
       let fileName = `uploads/images/${date.getFullYear()}-${(
@@ -587,7 +582,6 @@ export const addImageMessage = async (req: AuthRequest, res: Response): Promise<
 };
 
 /**
->>>>>>> Stashed changes
  * Update message delivery status.
  *
  * @route PUT /api/messages/:messageId/status

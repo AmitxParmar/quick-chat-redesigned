@@ -20,6 +20,7 @@ export interface IAddMessageRequest {
   to: string;
   text: string;
   type?: string;
+  conversationId?: string; // Optional for optimistic updates
 }
 
 export interface IAddMessageResponse {

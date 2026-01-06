@@ -8,7 +8,7 @@ import { useSendMessage } from "@/hooks/useMessages";
 import { useUserStore } from "@/store/useUserStore";
 import useAuth from "@/hooks/useAuth";
 
-function MessageBar({}) {
+function MessageBar({ conversationId }: { conversationId: string }) {
   const { activeChatUser } = useUserStore((state) => state);
   const { user: activeUser } = useAuth();
   const { mutate: sendMessage } = useSendMessage();
@@ -64,6 +64,7 @@ function MessageBar({}) {
       from: activeUser.waId,
       to: toWaId,
       text: message,
+      conversationId, // Include conversationId for optimistic updates
     };
 
     sendMessage(data, {

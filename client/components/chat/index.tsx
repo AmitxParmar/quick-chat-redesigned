@@ -28,7 +28,7 @@ function Chat({
       <div className="w-screen lg:w-full flex flex-col h-screen z-10">
         <ChatHeader />
         <ChatContainer conversationId={conversationId} />
-        <MessageBar />
+        <MessageBar conversationId={conversationId} />
       </div>
     </div>
   );

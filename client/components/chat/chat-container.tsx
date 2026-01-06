@@ -126,7 +126,7 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
         overflow-y-auto
         overflow-x-hidden
         custom-scrollbar
-        bg-background
+        
         flex flex-col
       "
       style={{
@@ -137,7 +137,7 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
       <div className="bg-[url(/chat-bg.png)] bg-fixed fixed h-full w-full opacity-5 !z-0 pointer-events-none"></div>
 
       {/* Load More Button at the top */}
-      <div className="flex items-center justify-center py-2 z-10 sticky top-0 bg-background/80 backdrop-blur-sm">
+      <div className="flex items-center justify-center py-2 z-10 top-0">
         <Button
           variant="ghost"
           onClick={handleLoadMore}

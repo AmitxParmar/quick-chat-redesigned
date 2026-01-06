@@ -3,7 +3,7 @@ import type {
   IAddMessageResponse,
 } from "@/services/message.service";
 import { getMessages, sendMessage } from "@/services/message.service";
-import { Conversation, Message, MessagePage } from "@/types";
+import { Conversation, LastMessage, Message, MessagePage } from "@/types";
 import {
   useInfiniteQuery,
   useMutation,
@@ -89,13 +89,17 @@ export function useMessages(conversationId: string) {
         }
 
         // Check if message already exists to prevent duplicates
+        // Check both by _id and by content+timestamp (for optimistic updates)
         const firstPage = oldData.pages[0];
         if (firstPage && Array.isArray(firstPage.messages)) {
           const messageExists = firstPage.messages.some(
-            (msg: any) => msg._id === payload.message._id
+            (msg: any) =>
+              msg._id === payload.message._id ||
+              (msg.text === payload.message.text &&
+                Math.abs(msg.timestamp - payload.message.timestamp) < 1000) // Within 1 second
           );
           if (messageExists) {
-            console.log("Socket: Message already exists in cache, skipping");
+            console.log("[Socket] Message already exists in cache (ID or content match), skipping");
             return oldData;
           }
         }
@@ -236,24 +240,202 @@ export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation<IAddMessageResponse, unknown, IAddMessageRequest>({
     mutationFn: (data) => {
-      // Only update conversations cache - messages cache will be updated by socket
-      return sendMessage(data)
+      return sendMessage(data);
     },
-    onSuccess: (data, _) => {
+    // Optimistic update: immediately add message to cache
+    onMutate: async (newMessage) => {
+      // Get conversationId from request, or find it from conversations cache
+      let conversationId = newMessage.conversationId;
+
+      if (!conversationId) {
+        // Try to find conversationId from conversations cache based on participants
+        const conversations = qc.getQueryData(["conversations"]) as Conversation[] | undefined;
+        if (conversations) {
+          const conversation = conversations.find((conv) =>
+            conv.participants.some((p) => p.waId === newMessage.to)
+          );
+          conversationId = conversation?.conversationId || conversation?._id || "";
+        }
+      }
+
+      if (!conversationId) {
+        console.warn("[useSendMessage] Could not determine conversationId for optimistic update");
+        return { previousMessages: null, previousConversations: null, optimisticMessage: null, conversationId: "" };
+      }
+
+      // Cancel any outgoing refetches to avoid overwriting our optimistic update
+      await qc.cancelQueries({ queryKey: ["messages", conversationId] });
+      await qc.cancelQueries({ queryKey: ["conversations"] });
+
+      // Snapshot the previous values for rollback
+      const previousMessages = qc.getQueryData(["messages", conversationId]);
+      const previousConversations = qc.getQueryData(["conversations"]);
+
+      // Create optimistic message with temporary ID
+      const optimisticMessage: Message = {
+        _id: `temp-${Date.now()}`, // Temporary ID
+        conversationId: conversationId, // Use the resolved conversationId
+        from: newMessage.from,
+        to: newMessage.to,
+        text: newMessage.text,
+        timestamp: Date.now(),
+        status: "pending", // Pending status shows clock icon
+        type: (newMessage.type as "text" | "image" | "document" | "audio" | "video") || "text",
+        waId: newMessage.to,
+        direction: "outgoing",
+        contact: {
+          name: "", // Will be populated by server
+          waId: newMessage.to,
+        },
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      // Optimistically update messages cache
+      qc.setQueryData(["messages", conversationId], (oldData: any) => {
+        if (!oldData || !oldData.pages) {
+          return {
+            pages: [
+              {
+                messages: [optimisticMessage],
+                pagination: {
+                  currentPage: 1,
+                  totalPages: 1,
+                  totalMessages: 1,
+                  hasMore: false,
+                },
+              },
+            ],
+            pageParams: [1],
+          };
+        }
+
+        // Prepend optimistic message to the first page
+        const newPages = oldData.pages.map((page: MessagePage, idx: number) => {
+          if (idx === 0) {
+            const oldMessages = Array.isArray(page.messages)
+              ? page.messages
+              : [];
+            return {
+              ...page,
+              messages: [optimisticMessage, ...oldMessages],
+              pagination: {
+                ...page.pagination,
+                totalMessages: (page.pagination?.totalMessages || 0) + 1,
+              },
+            };
+          }
+          return page;
+        });
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      // Optimistically update conversations cache
       qc.setQueryData(
         ["conversations"],
         (oldConvo: Conversation[] | undefined) => {
           if (!oldConvo) return oldConvo;
-          // Find the conversation to update
+
           const idx = oldConvo.findIndex(
-            (convo) => convo._id === data.conversationId
+            (convo) => convo._id === conversationId
           );
           if (idx === -1) return oldConvo;
+
+          // Convert Message to LastMessage format
+          const lastMessage: LastMessage = {
+            text: optimisticMessage.text,
+            timestamp: optimisticMessage.timestamp,
+            from: optimisticMessage.from,
+            status: optimisticMessage.status,
+          };
 
           // Update the lastMessage and move the conversation to the top
           const updatedConvo = {
             ...oldConvo[idx],
-            lastMessage: data.message,
+            lastMessage,
+          };
+          return [
+            updatedConvo,
+            ...oldConvo.slice(0, idx),
+            ...oldConvo.slice(idx + 1),
+          ];
+        }
+      );
+
+      // Return context with snapshots for rollback
+      return {
+        previousMessages,
+        previousConversations,
+        optimisticMessage,
+        conversationId
+      };
+    },
+    // On error, rollback to previous state
+    onError: (err, newMessage, context: any) => {
+      console.error("[useSendMessage] Error sending message:", err);
+
+      if (context?.previousMessages) {
+        qc.setQueryData(
+          ["messages", context.conversationId],
+          context.previousMessages
+        );
+      }
+      if (context?.previousConversations) {
+        qc.setQueryData(["conversations"], context.previousConversations);
+      }
+    },
+    // On success, replace optimistic message with real message from server
+    onSuccess: (data, _, context: any) => {
+      const conversationId = data.conversationId;
+
+      // Replace optimistic message with real message
+      qc.setQueryData(["messages", conversationId], (oldData: any) => {
+        if (!oldData || !oldData.pages) return oldData;
+
+        const newPages = oldData.pages.map((page: MessagePage) => ({
+          ...page,
+          messages: page.messages.map((msg: Message) => {
+            // Replace the optimistic message with the real one
+            if (msg._id === context?.optimisticMessage?._id) {
+              return data.message;
+            }
+            return msg;
+          }),
+        }));
+
+        return {
+          ...oldData,
+          pages: newPages,
+        };
+      });
+
+      // Update conversations cache with real message
+      qc.setQueryData(
+        ["conversations"],
+        (oldConvo: Conversation[] | undefined) => {
+          if (!oldConvo) return oldConvo;
+
+          const idx = oldConvo.findIndex(
+            (convo) => convo._id === conversationId
+          );
+          if (idx === -1) return oldConvo;
+
+          // Convert Message to LastMessage format
+          const lastMessage: LastMessage = {
+            text: data.message.text,
+            timestamp: data.message.timestamp,
+            from: data.message.from,
+            status: data.message.status,
+          };
+
+          // Update the lastMessage with real message data
+          const updatedConvo = {
+            ...oldConvo[idx],
+            lastMessage,
           };
           return [
             updatedConvo,
