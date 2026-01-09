@@ -44,7 +44,7 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
       const isReceiver = !isSender;
       return (
         <MessageBubble
-          key={message._id + index}
+          key={message.id + index}
           message={message}
           isSender={isSender}
           isReceiver={isReceiver}
@@ -55,7 +55,9 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
 
   // Extracted dependencies for useEffect to satisfy exhaustive-deps
   const pagesLength = data?.pages?.length;
-  const lastPageMessagesLength = data?.pages?.[data.pages.length - 1]?.messages?.length;
+  // We need to watch the FIRST page (newest messages) for changes to auto-scroll
+  // Backend returns newest first, so page[0] is the newest.
+  const newestPageMessagesLength = data?.pages?.[0]?.messages?.length;
 
   // Auto-scroll to bottom on initial load and when new messages arrive
   useEffect(() => {
@@ -73,7 +75,7 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
 
     // Otherwise, scroll to bottom (for initial load or new messages)
     el.scrollTop = el.scrollHeight;
-  }, [conversationId, pagesLength, lastPageMessagesLength]);
+  }, [conversationId, pagesLength, newestPageMessagesLength]);
 
   // Handle load more - save scroll height before fetching
   const handleLoadMore = () => {
@@ -83,17 +85,13 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
     fetchNextPage();
   };
 
-  // Fix: Only call markConversationAsRead when there are unread messages and not fetching, and only once per conversationId
-  const hasMarkedAsReadRef = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     if (
       !conversationId ||
       !activeUser?.waId ||
       !data?.pages ||
       data.pages.length === 0 ||
-      isFetching ||
-      hasMarkedAsReadRef.current.has(conversationId)
+      isFetching
     ) {
       return;
     }
@@ -106,7 +104,6 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
     );
 
     if (hasUnreadMessages) {
-      hasMarkedAsReadRef.current.add(conversationId);
       markConversationAsRead(conversationId);
     }
   }, [

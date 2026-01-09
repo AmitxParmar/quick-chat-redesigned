@@ -1,7 +1,7 @@
 import api from "@/lib/api";
 import { Message } from "@/types";
 
-const API_BASE = "/api/messages";
+const API_BASE = "/messages";
 
 export interface IMessagePagination {
   currentPage: number;

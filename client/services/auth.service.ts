@@ -1,6 +1,6 @@
 import api from "@/lib/api";
 
-const API_BASE = "/api/auth";
+const API_BASE = "/auth";
 
 // Register a new user
 export async function register(waId: string, name: string, password: string) {

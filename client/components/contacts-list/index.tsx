@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { useGetConversationId } from "@/hooks/useConversations";
 
+
+
 type ContactsGrouped = Record<string, Contact[]>;
 
 function ChatListItem({
@@ -63,15 +65,17 @@ function AddContactDialog({
     try {
       // Only waId is sent to the backend, nickname is not supported by the mutation
       await addContactMutation.mutateAsync(waId);
+
       setWaId("");
       setNickname("");
       onOpenChange(false);
     } catch (err: unknown) {
+      console.log("contacts error", err)
       const errorMessage =
         err instanceof Error
           ? err.message
           : (err as { response?: { data?: { message?: string } } })?.response
-              ?.data?.message || "Failed to add contact.";
+            ?.data?.message || "Failed to add contact.";
       setError(errorMessage);
     }
   };
@@ -190,7 +194,7 @@ const ContactList = () => {
       getConversationId(contact.waId, {
         onSuccess: (data) => {
           setContactListOpen(false);
-          const convoId = data._id; // Always use Mongo _id for routing
+          const convoId = data.id; // Always use Mongo _id for routing
           router.push(`/conversation/${convoId}/${contact.waId}`);
         },
         onError: (error) => console.error(error),
@@ -273,7 +277,7 @@ const ContactList = () => {
                     {userList.map((contact: Contact) => (
                       <ChatListItem
                         data={contact}
-                        key={contact._id}
+                        key={contact.id}
                         onClick={handleConversation(contact)}
                       />
                     ))}

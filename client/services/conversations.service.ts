@@ -1,7 +1,7 @@
 import api from "@/lib/api";
 import { Conversation, User } from "@/types";
 
-const API_BASE = "/api/conversations";
+const API_BASE = "/conversations";
 
 // Get all conversations
 export async function fetchAllConversations(): Promise<Conversation[] | []> {
@@ -25,7 +25,7 @@ export async function markMessagesAsRead(conversationId: string, waId: string) {
 // Get conversation by ID
 export async function getConversationId(to: User["waId"]) {
   const res = await api.post(API_BASE, { to });
-  console.log("getconvoid", res.data.data);
+  console.log("getconvoid", res.data);
   return res.data.data;
 }
 

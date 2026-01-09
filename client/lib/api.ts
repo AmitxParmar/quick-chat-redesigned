@@ -1,5 +1,7 @@
 import { refreshToken } from "@/services/auth.service";
 import axios from "axios";
+import { QueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000",
@@ -8,6 +10,12 @@ const api = axios.create({
 
 let isRefreshing = false;
 let refreshSubscribers: Array<() => void> = [];
+let queryClient: QueryClient | null = null;
+
+// Set query client instance (called from app initialization)
+export const setQueryClient = (client: QueryClient) => {
+  queryClient = client;
+};
 
 const subscribeTokenRefresh = (cb: () => void) => {
   refreshSubscribers.push(cb);
@@ -30,8 +38,8 @@ api.interceptors.response.use(
     const errorCode = response?.data?.code;
 
     // Check if this is an authentication error that should trigger token refresh
-    const shouldRefreshToken = 
-      response?.status === 401 && 
+    const shouldRefreshToken =
+      response?.status === 401 &&
       (errorCode === "ACCESS_TOKEN_EXPIRED" || errorCode === "ACCESS_TOKEN_INVALID");
 
     if (shouldRefreshToken) {
@@ -39,6 +47,8 @@ api.interceptors.response.use(
       if (isAuthRefreshEndpoint) {
         isRefreshing = false;
         refreshSubscribers = [];
+        // Clear all cached data
+        queryClient?.clear();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
@@ -47,6 +57,7 @@ api.interceptors.response.use(
 
       if (config._retry) {
         // Already retried once, do not loop
+        queryClient?.clear();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
@@ -76,6 +87,8 @@ api.interceptors.response.use(
       } catch (refreshError) {
         isRefreshing = false;
         refreshSubscribers = [];
+        // Clear all cached data
+        queryClient?.clear();
 
         // Refresh failed, redirect to login
         if (typeof window !== "undefined") {
@@ -86,15 +99,21 @@ api.interceptors.response.use(
     }
 
     // For other authentication errors (missing tokens, user not found, etc.), redirect immediately
-    if (response?.status === 401 && 
-        (errorCode === "ACCESS_TOKEN_MISSING" || 
-         errorCode === "REFRESH_TOKEN_MISSING" ||
-         errorCode === "REFRESH_TOKEN_EXPIRED" ||
-         errorCode === "REFRESH_TOKEN_INVALID" ||
-         errorCode === "USER_NOT_FOUND")) {
+    if (response?.status === 401 &&
+      (errorCode === "ACCESS_TOKEN_MISSING" ||
+        errorCode === "REFRESH_TOKEN_MISSING" ||
+        errorCode === "REFRESH_TOKEN_EXPIRED" ||
+        errorCode === "REFRESH_TOKEN_INVALID" ||
+        errorCode === "USER_NOT_FOUND")) {
+      // Clear all cached data
+      queryClient?.clear();
       if (typeof window !== "undefined") {
         window.location.href = "/login";
       }
+    } else if (response?.status !== 401) {
+      // Show error toast for non-401 errors (e.g. 400, 403, 404, 500)
+      const errorMessage = response?.data?.message || error.message || "An unexpected error occurred";
+      toast.error(errorMessage);
     }
 
     return Promise.reject(error);

@@ -1,6 +1,6 @@
 import api from "@/lib/api";
 
-const API_BASE = "/api/contacts";
+const API_BASE = "/contacts";
 
 export const getContacts = async () => {
   const response = await api.get(API_BASE);

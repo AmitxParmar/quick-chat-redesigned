@@ -1,4 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import useAuth from "@/hooks/useAuth";
 import {
   getContacts,
   addContact,
@@ -6,10 +8,12 @@ import {
 } from "@/services/contacts.service";
 
 export const useContacts = () => {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["contacts"],
+    queryKey: ["contacts", user?.waId],
     queryFn: getContacts,
     staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled: !!user?.waId,
     select: (data) => data.data,
   });
 };
@@ -19,6 +23,7 @@ export const useAddContact = () => {
   return useMutation({
     mutationFn: addContact,
     onSuccess: () => {
+      toast.success("Contact added successfully");
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
     },
   });

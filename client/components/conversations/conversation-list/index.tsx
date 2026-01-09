@@ -24,7 +24,7 @@ const ConversationList = () => {
           <NoConversations />
         ) : (
           conversations?.map((contact) => (
-            <ConversationListItem key={contact._id} data={contact} />
+            <ConversationListItem key={contact.id} data={contact} />
           ))
         )
       ) : (

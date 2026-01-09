@@ -30,12 +30,11 @@ interface ApiErrorResponse {
 function LoginPage() {
   const router = useRouter();
   const { mutate: login, isPending, error, data } = useLogin();
-  
+
   // handle default form values and form validations
   const form = useForm<LoginSchema>({
     resolver: zodResolver(loginSchema),
     defaultValues: { waId: "", password: "" },
-    mode: "onTouched",
   });
 
   // handle form submission
@@ -52,28 +51,28 @@ function LoginPage() {
   };
 
 
-  // handle demo account selection: add demo account to inputs
+  // handle demo account selection: add demo account to inputs and login
   const handleDemoClick = (demo: { waId: string; password: string }) => {
-    form.setValue("waId", demo.waId, {
-      shouldTouch: true,
-      shouldValidate: true,
-    });
-    form.setValue("password", demo.password, {
-      shouldTouch: true,
-      shouldValidate: true,
-    });
+    form.setValue("waId", demo.waId);
+    form.setValue("password", demo.password);
+
+    // Clear any validation errors (e.g. from onBlur)
+    form.clearErrors();
+
+    // Automatically submit with valid demo credentials
+    onSubmit(demo);
   };
 
 
   // get error message from axios.response.data object and return it.
   const getErrorMessage = () => {
     if (!error) return null;
-    
+
     if (error instanceof AxiosError) {
       const errorData = error.response?.data as ApiErrorResponse;
       if (errorData?.message) {
         return errorData.message;
-    }
+      }
     }
     return "Login failed";
   };

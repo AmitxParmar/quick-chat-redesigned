@@ -11,20 +11,10 @@ import api from "@/lib/api";
 import { Conversation } from "@/types";
 import useAuth from "@/hooks/useAuth";
 
-// Global socket singleton to prevent multiple connections
-let globalSocket: Socket | null = null;
+import { socketService } from "@/services/socket.service";
 
-function getSocket() {
-  if (!globalSocket) {
-    const baseURL = api.defaults.baseURL || "http://localhost:5000";
-    globalSocket = io(baseURL, {
-      transports: ["websocket"],
-      autoConnect: true,
-      withCredentials: true,
-    });
-  }
-  return globalSocket;
-}
+// Global socket (via service)
+const getSocket = () => socketService.getSocket();
 
 // Fetch all conversations, cache for 1 minute, do not refetch if cached
 export function useConversations() {
@@ -51,7 +41,7 @@ export function useConversations() {
 
     // Create a unique listener for conversation updates
     const onConversationUpdated = (conversation: Conversation) => {
-      console.log("Socket: conversation:updated received:", conversation._id);
+      console.log("Socket: conversation:updated received:", conversation.id);
 
       // Update the conversations cache
       qc.setQueryData(
@@ -61,7 +51,7 @@ export function useConversations() {
 
           // Find the conversation to update
           const idx = oldConvo.findIndex(
-            (convo) => convo._id === conversation._id
+            (convo) => convo.id === conversation.id
           );
 
           if (idx === -1) {
@@ -90,12 +80,6 @@ export function useConversations() {
       updatedMessages: number;
       conversation: Conversation;
     }) => {
-      console.log("[Socket] messages:marked-as-read received:", {
-        conversationId: payload.conversationId,
-        waId: payload.waId,
-        updatedMessages: payload.updatedMessages,
-        currentUser: user.waId,
-      });
 
       // Only update if this is for the current user
       if (payload.waId !== user.waId) {
@@ -109,9 +93,7 @@ export function useConversations() {
         (oldConvo: Conversation[] | undefined) => {
           if (!oldConvo) return oldConvo;
 
-          const idx = oldConvo.findIndex(
-            (convo) => convo._id === payload.conversationId
-          );
+          const idx = oldConvo.findIndex((convo) => convo.id === payload.conversationId);
 
           if (idx === -1) {
             console.log("[Socket] Conversation not found in cache");
@@ -226,7 +208,7 @@ export function useMarkAsRead(id: string) {
           if (!oldConvo) return oldConvo;
 
           return oldConvo.map((convo) => {
-            if (convo._id === conversationId) {
+            if (convo.id === conversationId) {
               return {
                 ...convo,
                 unreadCount: 0, // Reset unread count
@@ -353,7 +335,7 @@ export function useDeleteConversation() {
             (oldData: Conversation[] | undefined) => {
               if (!oldData) return oldData;
               return oldData.map((conv) =>
-                conv._id === conversationId
+                conv.id === conversationId
                   ? { ...conv, isArchived: true }
                   : conv
               );
@@ -365,7 +347,7 @@ export function useDeleteConversation() {
             ["conversations"],
             (oldData: Conversation[] | undefined) => {
               if (!oldData) return oldData;
-              return oldData.filter((conv) => conv._id !== conversationId);
+              return oldData.filter((conv) => conv.id !== conversationId);
             }
           );
         }
@@ -377,12 +359,12 @@ export function useDeleteConversation() {
             if (!oldData) return oldData;
             if (deleteType === "soft") {
               return oldData.map((conv) =>
-                conv._id === conversationId
+                conv.id === conversationId
                   ? { ...conv, isArchived: true }
                   : conv
               );
             } else {
-              return oldData.filter((conv) => conv._id !== conversationId);
+              return oldData.filter((conv) => conv.id !== conversationId);
             }
           }
         );

@@ -68,9 +68,9 @@ export const ConversationListItem = React.memo<ConversationListItemProps>(
           setActiveChatUser({ ...otherParticipant, isOnline: true });
         }
 
-        router.push(`/conversation/${data._id}/${otherParticipant?.waId}`);
+        router.push(`/conversation/${data.id}/${otherParticipant?.waId}`);
       },
-      [router, data._id, otherParticipant, setActiveChatUser]
+      [router, data.id, otherParticipant, setActiveChatUser]
     );
 
     // Handle delete conversation
@@ -81,18 +81,17 @@ export const ConversationListItem = React.memo<ConversationListItemProps>(
 
         if (
           confirm(
-            `Are you sure you want to ${
-              deleteType === "soft" ? "archive" : "permanently delete"
+            `Are you sure you want to ${deleteType === "soft" ? "archive" : "permanently delete"
             } this conversation?`
           )
         ) {
           deleteConversation.mutate({
-            conversationId: data._id,
+            conversationId: data.id,
             deleteType,
           });
         }
       },
-      [deleteConversation, data._id]
+      [deleteConversation, data.id]
     );
 
     // Render message preview
@@ -149,11 +148,10 @@ export const ConversationListItem = React.memo<ConversationListItemProps>(
               </span>
               {!isContactsPage && (
                 <span
-                  className={`${
-                    unreadCount > 0 && !isOwnMessage
-                      ? "text-label"
-                      : "text-muted-foreground"
-                  } text-sm`}
+                  className={`${unreadCount > 0 && !isOwnMessage
+                    ? "text-label"
+                    : "text-muted-foreground"
+                    } text-sm`}
                 >
                   {createdAtTime}
                 </span>

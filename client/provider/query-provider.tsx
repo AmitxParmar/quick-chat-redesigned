@@ -2,8 +2,8 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-
-import { useState } from "react";
+import { setQueryClient } from "@/lib/api";
+import { useState, useEffect } from "react";
 
 export default function QueryProvider({
   children,
@@ -33,6 +33,11 @@ export default function QueryProvider({
         },
       })
   );
+
+  // Set the query client instance for the API interceptor
+  useEffect(() => {
+    setQueryClient(queryClient);
+  }, [queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>

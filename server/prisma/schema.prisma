@@ -1,0 +1,135 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "mongodb"
+    url      = env("DATABASE_URL")
+}
+
+// Enums
+enum MessageStatus {
+    sent
+    delivered
+    read
+    failed
+}
+
+enum MessageType {
+    text
+    image
+    document
+    audio
+    video
+}
+
+enum MessageDirection {
+    incoming
+    outgoing
+}
+
+enum NotificationType {
+    TASK_ASSIGNED
+}
+
+// User Model
+model User {
+    id             String   @id @default(auto()) @map("_id") @db.ObjectId
+    waId           String   @unique
+    name           String?
+    profilePicture String?
+    status         String   @default("Hey there! I am using WhaatsApp.")
+    lastSeen       DateTime @default(now())
+    isOnline       Boolean  @default(false)
+    password       String
+    refreshToken   String?
+
+    // Relations
+    contacts  Contact[] @relation("UserContacts")
+    contactOf Contact[] @relation("ContactUser")
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([isOnline, lastSeen])
+    @@map("users")
+}
+
+// Message Model
+model Message {
+    id             String            @id @default(auto()) @map("_id") @db.ObjectId
+    conversationId String            @db.ObjectId
+    from           String
+    to             String
+    text           String
+    timestamp      Int               @default(0)
+    status         MessageStatus     @default(sent)
+    type           MessageType       @default(text)
+    waId           String
+    direction      MessageDirection?
+    contact        MessageContact
+
+    // Relations
+    conversation Conversation? @relation(fields: [conversationId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@index([conversationId, timestamp])
+    @@map("processed_messages")
+}
+
+// Embedded type for Message.contact
+type MessageContact {
+    name String
+    waId String
+}
+
+// Conversation Model
+model Conversation {
+    id             String                    @id @default(auto()) @map("_id") @db.ObjectId
+    conversationId String                    @unique
+    participants   ConversationParticipant[]
+    lastMessage    LastMessage?
+    unreadCount    Int                       @default(0)
+    isArchived     Boolean                   @default(false)
+
+    // Relations
+    messages Message[]
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+// Embedded types for Conversation
+type ConversationParticipant {
+    waId           String
+    name           String?
+    profilePicture String?
+}
+
+type LastMessage {
+    text      String
+    timestamp Int
+    from      String
+    status    String
+}
+
+// Contact Model
+model Contact {
+    id            String  @id @default(auto()) @map("_id") @db.ObjectId
+    userId        String  @db.ObjectId
+    contactUserId String  @db.ObjectId
+    nickname      String?
+    isBlocked     Boolean @default(false)
+
+    // Relations
+    user        User @relation("UserContacts", fields: [userId], references: [id])
+    contactUser User @relation("ContactUser", fields: [contactUserId], references: [id])
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([userId, contactUserId])
+    @@map("user_contacts")
+}

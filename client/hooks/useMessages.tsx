@@ -5,6 +5,7 @@ import type {
 import { getMessages, sendMessage } from "@/services/message.service";
 import { Conversation, LastMessage, Message, MessagePage } from "@/types";
 import {
+  InfiniteData,
   useInfiniteQuery,
   useMutation,
   useQueryClient,
@@ -13,20 +14,10 @@ import { useEffect, useRef } from "react";
 import { io, type Socket } from "socket.io-client";
 import api from "@/lib/api";
 
-// Global socket singleton to prevent multiple connections
-let globalSocket: Socket | null = null;
+import { socketService } from "@/services/socket.service";
 
-function getSocket() {
-  if (!globalSocket) {
-    const baseURL = api.defaults.baseURL || "http://localhost:5000";
-    globalSocket = io(baseURL, {
-      transports: ["websocket"],
-      autoConnect: true,
-      withCredentials: true,
-    });
-  }
-  return globalSocket;
-}
+// Global socket (via service)
+const getSocket = () => socketService.getSocket();
 
 // Fetch messages for a specific conversation using the correct route
 export function useMessages(conversationId: string) {
@@ -36,7 +27,7 @@ export function useMessages(conversationId: string) {
   >(null);
   const statusUpdateListenerRef = useRef<
     | ((payload: {
-      messageId: string;
+      id: string;
       conversationId: string;
       status: string;
       message: Message;
@@ -93,8 +84,8 @@ export function useMessages(conversationId: string) {
         const firstPage = oldData.pages[0];
         if (firstPage && Array.isArray(firstPage.messages)) {
           const messageExists = firstPage.messages.some(
-            (msg: any) =>
-              msg._id === payload.message._id ||
+            (msg: Message) =>
+              msg.id === payload.message.id ||
               (msg.text === payload.message.text &&
                 Math.abs(msg.timestamp - payload.message.timestamp) < 1000) // Within 1 second
           );
@@ -134,7 +125,7 @@ export function useMessages(conversationId: string) {
 
     // Create a listener for message status updates
     const onMessageStatusUpdated = (payload: {
-      messageId: string;
+      id: string;
       conversationId: string;
       status: string;
       message: Message;
@@ -151,7 +142,7 @@ export function useMessages(conversationId: string) {
       console.log(
         "[Socket] message:status-updated received:",
         {
-          messageId: payload.messageId,
+          id: payload.id,
           status: payload.status,
           updatedBy: payload.updatedBy,
           conversationId: payload.conversationId
@@ -159,15 +150,15 @@ export function useMessages(conversationId: string) {
       );
 
       // Update the message status in the cache
-      qc.setQueryData(["messages", conversationId], (oldData: any) => {
+      qc.setQueryData(["messages", conversationId], (oldData: InfiniteData<MessagePage>) => {
         if (!oldData || !oldData.pages) return oldData;
 
         const newPages = oldData.pages.map((page: MessagePage) => ({
           ...page,
           messages: page.messages.map((msg: Message) => {
-            if (msg._id === payload.messageId) {
+            if (msg.id === payload.id) {
               console.log(
-                `[Socket] Updating message ${msg._id} status from ${msg.status} to ${payload.status}`
+                `[Socket] Updating message ${msg.id} status from ${msg.status} to ${payload.status}`
               );
               return { ...msg, status: payload.status };
             }
@@ -254,7 +245,7 @@ export function useSendMessage() {
           const conversation = conversations.find((conv) =>
             conv.participants.some((p) => p.waId === newMessage.to)
           );
-          conversationId = conversation?.conversationId || conversation?._id || "";
+          conversationId = conversation?.conversationId || conversation?.id || "";
         }
       }
 
@@ -273,7 +264,7 @@ export function useSendMessage() {
 
       // Create optimistic message with temporary ID
       const optimisticMessage: Message = {
-        _id: `temp-${Date.now()}`, // Temporary ID
+        id: `temp-${Date.now()}`, // Temporary ID
         conversationId: conversationId, // Use the resolved conversationId
         from: newMessage.from,
         to: newMessage.to,
@@ -341,7 +332,7 @@ export function useSendMessage() {
           if (!oldConvo) return oldConvo;
 
           const idx = oldConvo.findIndex(
-            (convo) => convo._id === conversationId
+            (convo) => convo.id === conversationId
           );
           if (idx === -1) return oldConvo;
 
@@ -400,7 +391,7 @@ export function useSendMessage() {
           ...page,
           messages: page.messages.map((msg: Message) => {
             // Replace the optimistic message with the real one
-            if (msg._id === context?.optimisticMessage?._id) {
+            if (msg.id === context?.optimisticMessage?.id) {
               return data.message;
             }
             return msg;
@@ -420,7 +411,7 @@ export function useSendMessage() {
           if (!oldConvo) return oldConvo;
 
           const idx = oldConvo.findIndex(
-            (convo) => convo._id === conversationId
+            (convo) => convo.id === conversationId
           );
           if (idx === -1) return oldConvo;
 

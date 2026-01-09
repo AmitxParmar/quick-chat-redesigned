@@ -21,7 +21,7 @@ export type LastMessage = {
 };
 
 export type Conversation = {
-  _id: string;
+  id: string;
   conversationId: string;
   participants: Participant[];
   lastMessage: LastMessage;
@@ -32,7 +32,7 @@ export type Conversation = {
 };
 
 export type Message = {
-  _id: string;
+  id: string;
   conversationId: string;
   from: string;
   to: string;
@@ -52,7 +52,7 @@ export type Message = {
 
 // Contact type based on the provided array of objects
 export type Contact = {
-  _id: string;
+  id: string;
   waId: string;
   name: string;
   isOnline: boolean;
@@ -61,7 +61,7 @@ export type Contact = {
 };
 
 export type User = {
-  _id?: string;
+  id?: string;
   waId: string;
   name?: string;
   profilePicture?: string;
