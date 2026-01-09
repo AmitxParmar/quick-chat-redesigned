@@ -5,6 +5,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import useAuth from "@/hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { Loader, Loader2 } from "lucide-react";
 
 const ChatLayout = ({ children }: { children: React.ReactNode }) => {
   const isMobile = useIsMobile();
@@ -15,10 +16,13 @@ const ChatLayout = ({ children }: { children: React.ReactNode }) => {
   // Show loading state while checking authentication
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
+      <div className="flex h-screen w-full flex-col items-center justify-center gap-8 bg-background">
+        <div className="relative flex items-center justify-center">
+          <div className="absolute h-24 w-24 rounded-full bg-green-500/10 blur-2xl animate-pulse" />
+          <Loader2 className="relative h-12 w-12 animate-spin text-green-600" />
+        </div>
       </div>
-    );
+    )
   }
 
   // Don't render the chat layout if not authenticated
