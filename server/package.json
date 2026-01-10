@@ -1,7 +1,7 @@
 {
-  "name": "collaboration-task-manager",
+  "name": "quick-chat",
   "version": "1.0.0",
-  "description": "collaboration task manager assignment.",
+  "description": "Whatsapp clone with features like chat, create contact.",
   "main": "./dist/index.cjs",
   "type": "module",
   "module": "./dist/index.mjs",

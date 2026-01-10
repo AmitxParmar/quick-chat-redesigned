@@ -71,10 +71,7 @@ class Environment implements IEnvironment {
     const rootDir: string = process.cwd();
     const envPath = path.resolve(rootDir, EnvironmentFile[key]);
     const defaultEnvPath = path.resolve(rootDir, EnvironmentFile.DEFAULT);
-    if (!fs.existsSync(envPath) && !fs.existsSync(defaultEnvPath)) {
-      throw new Error(envFileNotFoundError(key));
-    }
-    return fs.existsSync(envPath) ? envPath : defaultEnvPath;
+    return fs.existsSync(envPath) ? envPath : fs.existsSync(defaultEnvPath) ? defaultEnvPath : '';
   }
 
   private validateEnvValues() {
@@ -92,7 +89,9 @@ class Environment implements IEnvironment {
     ) as keyof typeof Environments;
     const envPath = this.resolveEnvPath(envKey);
 
-    configDotenv({ path: envPath });
+    if (envPath) {
+      configDotenv({ path: envPath });
+    }
     this.validateEnvValues();
   }
 

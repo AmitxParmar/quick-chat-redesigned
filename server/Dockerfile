@@ -25,8 +25,9 @@ ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json ./
+COPY public ./public
 RUN touch .env
 
 
-EXPOSE 3000
+EXPOSE 8000
 CMD ["node", "dist/index.cjs"]
