@@ -30,15 +30,18 @@ export const messageLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => {
-        // Use user's waId for rate limiting, fallback to IP
+        // Use user's waId for rate limiting (authenticated users only)
         const authReq = req as AuthRequest;
-        return authReq.user?.waId || req.ip || 'anonymous';
+        // Return waId if available, otherwise use 'anonymous' (IP-based limiting is disabled)
+        return authReq.user?.waId || 'anonymous';
     },
     message: {
         status: 429,
         message: "You're sending messages too fast! Please slow down.",
     },
     skip: () => false, // Always enforce, even in dev
+    // Disable default validations since we're using waId, not IP
+    validate: { default: false },
 });
 
 /**
@@ -53,11 +56,13 @@ export const searchLimiter = rateLimit({
     legacyHeaders: false,
     keyGenerator: (req) => {
         const authReq = req as AuthRequest;
-        return authReq.user?.waId || req.ip || 'anonymous';
+        return authReq.user?.waId || 'anonymous';
     },
     message: {
         status: 429,
         message: "Too many search requests. Please try again in a moment.",
     },
     skip: () => false,
+    // Disable default validations since we're using waId, not IP
+    validate: { default: false },
 });
