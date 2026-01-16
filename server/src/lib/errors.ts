@@ -52,3 +52,10 @@ export class HttpForbiddenError extends ApiError {
     super(HttpStatusCode.Forbidden, message, errors, code);
   }
 }
+
+export class HttpConflictError extends ApiError {
+  constructor(message: string, errors?: string[], code?: string) {
+    super(HttpStatusCode.Conflict, message, errors, code);
+  }
+}
+

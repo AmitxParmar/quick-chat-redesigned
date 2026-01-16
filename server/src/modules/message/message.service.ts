@@ -1,7 +1,8 @@
 import messageRepository, { type PaginationQuery, type SearchQuery } from './message.repository';
 import { MessageStatus, type Message } from '@prisma/client';
-import { HttpNotFoundError, HttpBadRequestError, HttpForbiddenError } from '@/lib/errors';
+import { HttpNotFoundError, HttpBadRequestError, HttpForbiddenError, HttpConflictError } from '@/lib/errors';
 import logger from '@/lib/logger';
+import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 
 export interface MessageServiceOptions {
     userId?: string;
@@ -16,6 +17,7 @@ export interface MessagePaginationResult {
         totalMessages: number;
         hasMore: boolean;
     };
+    cached?: boolean; // Indicates if result came from cache
 }
 
 export interface MessageSearchResult {
@@ -30,11 +32,12 @@ export interface MessageSearchResult {
 }
 
 /**
- * Service layer for message business logic with Prisma
+ * Service layer for message business logic with Prisma and Redis caching
  */
 export default class MessageService {
     /**
      * Gets all messages for a conversation with pagination
+     * Uses read-through caching for page 1 (most recent messages)
      */
     public async getMessages(
         conversationId: string,
@@ -51,7 +54,7 @@ export default class MessageService {
             ]);
         }
 
-        //Check if user is participant
+        // Check if user is participant
         const isParticipant = await messageRepository.isUserParticipant(
             options.userWaId,
             resolvedId
@@ -66,10 +69,42 @@ export default class MessageService {
         const page = query.page || 1;
         const limit = Math.min(query.limit || 25, 100);
 
+        // Try cache for page 1 (most recent messages)
+        if (page === 1) {
+            const cachedMessages = await cacheService.getRecentMessages<Message>(resolvedId, limit);
+
+            if (cachedMessages.length >= limit) {
+                logger.info(`Cache HIT for conversation ${resolvedId} (${cachedMessages.length} messages)`);
+
+                // Get total count from cache or DB
+                const cachedCount = await cacheService.get<number>(CacheKeys.MESSAGES_COUNT(resolvedId));
+                const total = cachedCount ?? await this.getAndCacheMessageCount(resolvedId);
+
+                return {
+                    messages: cachedMessages.slice(0, limit),
+                    pagination: {
+                        currentPage: page,
+                        totalPages: Math.ceil(total / limit),
+                        totalMessages: total,
+                        hasMore: limit < total,
+                    },
+                    cached: true,
+                };
+            }
+        }
+
+        // Cache miss or requesting older pages - fetch from DB
+        logger.info(`Cache MISS for conversation ${resolvedId}, fetching from DB`);
+
         const { messages, total } = await messageRepository.findByConversation(resolvedId, {
             page,
             limit,
         });
+
+        // Warm cache for page 1
+        if (page === 1 && messages.length > 0) {
+            await this.warmMessagesCache(resolvedId, messages, total);
+        }
 
         return {
             messages,
@@ -79,6 +114,7 @@ export default class MessageService {
                 totalMessages: total,
                 hasMore: page * limit < total,
             },
+            cached: false,
         };
     }
 
@@ -145,12 +181,14 @@ export default class MessageService {
 
     /**
      * Creates and sends a new message
+     * Includes idempotency check to prevent duplicate messages
      */
     public async sendMessage(
         data: {
             to: string;
             text: string;
             type?: string;
+            correlationId?: string; // Idempotency key from client
         },
         options: MessageServiceOptions
     ): Promise<{ message: Message; conversationId: string }> {
@@ -159,6 +197,16 @@ export default class MessageService {
         // Validate required fields
         if (!data.to || !data.text) {
             throw new HttpBadRequestError('Missing required fields', ['to and text are required']);
+        }
+
+        // Check idempotency - prevent duplicate messages
+        if (data.correlationId) {
+            const isDuplicate = await cacheService.checkIdempotency(data.correlationId);
+            if (isDuplicate) {
+                throw new HttpConflictError('Duplicate message detected', [
+                    'A message with this correlationId was already processed',
+                ]);
+            }
         }
 
         // Get sender user
@@ -184,6 +232,11 @@ export default class MessageService {
         });
 
         logger.info(`Message created: ${message.id}`);
+
+        // Update cache in background (non-blocking)
+        this.updateCacheAfterSend(conversation.id, message, [options.userWaId, data.to]).catch(
+            (err) => logger.error('Cache update failed:', err)
+        );
 
         // Emit socket events for real-time updates
         const socketService = (await import('@/lib/socket')).default;
@@ -249,4 +302,67 @@ export default class MessageService {
 
         return updatedMessage;
     }
+
+    // ============================================
+    // PRIVATE CACHE HELPER METHODS
+    // ============================================
+
+    /**
+     * Warm the messages cache for a conversation
+     */
+    private async warmMessagesCache(
+        conversationId: string,
+        messages: Message[],
+        total: number
+    ): Promise<void> {
+        try {
+            // Store messages in cache (newest first)
+            for (const message of messages.reverse()) {
+                await cacheService.cacheRecentMessage(conversationId, message);
+            }
+
+            // Cache the total count
+            await cacheService.set(
+                CacheKeys.MESSAGES_COUNT(conversationId),
+                total,
+                CacheTTL.MESSAGES_RECENT
+            );
+
+            logger.info(`Warmed cache for conversation ${conversationId} with ${messages.length} messages`);
+        } catch (error) {
+            logger.error(`Failed to warm cache for ${conversationId}:`, error);
+        }
+    }
+
+    /**
+     * Get and cache message count for a conversation
+     */
+    private async getAndCacheMessageCount(conversationId: string): Promise<number> {
+        const { total } = await messageRepository.findByConversation(conversationId, { page: 1, limit: 1 });
+        await cacheService.set(CacheKeys.MESSAGES_COUNT(conversationId), total, CacheTTL.MESSAGES_RECENT);
+        return total;
+    }
+
+    /**
+     * Update cache after sending a message
+     */
+    private async updateCacheAfterSend(
+        conversationId: string,
+        message: Message,
+        participantWaIds: string[]
+    ): Promise<void> {
+        // Add new message to recent messages cache
+        await cacheService.cacheRecentMessage(conversationId, message);
+
+        // Increment message count if cached
+        const countKey = CacheKeys.MESSAGES_COUNT(conversationId);
+        const cachedCount = await cacheService.get<number>(countKey);
+        if (cachedCount !== null) {
+            await cacheService.set(countKey, cachedCount + 1, CacheTTL.MESSAGES_RECENT);
+        }
+
+        // Invalidate participant conversation lists (they'll refetch)
+        await cacheService.invalidateConversationCaches(conversationId, participantWaIds);
+    }
 }
+
