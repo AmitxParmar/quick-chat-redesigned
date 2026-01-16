@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import Controller from './message.controller';
 import { verifyAuthToken } from '@/middlewares/auth';
+import RequestValidator from '@/middlewares/request-validator';
+import { messageLimiter, searchLimiter } from '@/middlewares/rate-limiter';
+import { SendMessageDto, UpdateMessageStatusDto, SearchMessagesDto } from '@/dto/message.dto';
 
 const message: Router = Router();
 const controller = new Controller();
@@ -30,8 +33,9 @@ message.use(verifyAuthToken);
  * Send message body
  * @typedef {object} SendMessageBody
  * @property {string} to.required - Receiver waId
- * @property {string} text.required - Message content
+ * @property {string} text.required - Message content (max 4000 chars)
  * @property {string} type - Message type (default: text)
+ * @property {string} correlationId - Idempotency key to prevent duplicates
  */
 
 /**
@@ -45,13 +49,13 @@ message.use(verifyAuthToken);
  * @summary Search messages across conversations
  * @tags messages
  * @security bearerAuth
- * @param {string} query.query.required - Search query text
+ * @param {string} query.query.required - Search query text (max 200 chars)
  * @param {string} conversationId.query - Filter by conversation ID (optional)
  * @param {string} page.query - Page number (default: 1)
  * @param {string} limit.query - Results per page (default: 25, max: 100)
  * @return {object} 200 - Search results with pagination
  */
-message.get('/search', controller.searchMessages);
+message.get('/search', searchLimiter, controller.searchMessages);
 
 /**
  * GET /messages/:conversationId
@@ -73,7 +77,12 @@ message.get('/:conversationId', controller.getMessages);
  * @param {SendMessageBody} request.body.required
  * @return {object} 201 - Message sent successfully
  */
-message.post('/', controller.sendMessage);
+message.post(
+    '/',
+    messageLimiter,
+    RequestValidator.validate(SendMessageDto),
+    controller.sendMessage
+);
 
 /**
  * PUT /messages/:messageId/status
@@ -84,6 +93,11 @@ message.post('/', controller.sendMessage);
  * @param {UpdateStatusBody} request.body.required
  * @return {object} 200 - Status updated successfully
  */
-message.put('/:messageId/status', controller.updateMessageStatus);
+message.put(
+    '/:messageId/status',
+    RequestValidator.validate(UpdateMessageStatusDto),
+    controller.updateMessageStatus
+);
 
 export default message;
+

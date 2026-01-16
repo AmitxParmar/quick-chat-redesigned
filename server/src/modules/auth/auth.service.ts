@@ -1,6 +1,7 @@
 import { type User } from '@prisma/client';
 import authRepository from './auth.repository';
 import jwtService from '@/lib/jwt';
+import { redis } from '@/lib/redis';
 import { HttpUnAuthorizedError, HttpBadRequestError, HttpNotFoundError } from '@/lib/errors';
 import logger from '@/lib/logger';
 
@@ -29,6 +30,8 @@ export interface AuthResult {
 const normalizeWaId = (waId: string): string => {
   return waId.startsWith('91') ? waId : `91${waId}`;
 };
+
+const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
 export default class AuthService {
   /**
@@ -64,9 +67,13 @@ export default class AuthService {
     const accessToken = jwtService.generateAccessToken({ userId: user.id });
     const refreshToken = jwtService.generateRefreshToken({ userId: user.id });
 
-    // Save refresh token to user
+    // Store Refresh Token in Redis (Key: auth:refresh_token:<token_uuid>)
+    // Value: UserId
+    // We use the token itself as key, or a hash of it. Since tokens are long, let's store it as is for simplicity in this demo.
+    await redis.set(`auth:refresh_token:${refreshToken}`, user.id, { ex: REFRESH_TOKEN_TTL });
+
+    // Update user online status
     await authRepository.updateUser(user.id, {
-      refreshToken,
       isOnline: true,
     });
 
@@ -108,11 +115,13 @@ export default class AuthService {
     const accessToken = jwtService.generateAccessToken({ userId: user.id });
     const refreshToken = jwtService.generateRefreshToken({ userId: user.id });
 
-    // Update user status and save refresh token
+    // Store Refresh Token in Redis
+    await redis.set(`auth:refresh_token:${refreshToken}`, user.id, { ex: REFRESH_TOKEN_TTL });
+
+    // Update user status
     await authRepository.updateUser(user.id, {
       isOnline: true,
       lastSeen: new Date(),
-      refreshToken,
     });
 
     logger.info(`User logged in successfully: ${user.id}`);
@@ -128,13 +137,16 @@ export default class AuthService {
   /**
    * Logout user
    */
-  public async logout(userId: string): Promise<void> {
+  public async logout(userId: string, refreshToken?: string): Promise<void> {
     logger.info(`User logout: ${userId}`);
+
+    if (refreshToken) {
+      await redis.del(`auth:refresh_token:${refreshToken}`);
+    }
 
     await authRepository.updateUser(userId, {
       isOnline: false,
       lastSeen: new Date(),
-      refreshToken: null,
     });
   }
 
@@ -146,7 +158,7 @@ export default class AuthService {
     refreshToken: string;
     user: Omit<User, 'password'>;
   }> {
-    // Verify refresh token
+    // 1. Verify token signature first (Stateless check)
     const result = jwtService.verifyRefreshTokenDetailed(refreshToken);
 
     if (!result.valid) {
@@ -159,22 +171,36 @@ export default class AuthService {
       throw new HttpUnAuthorizedError('Invalid refresh token', 'REFRESH_TOKEN_INVALID');
     }
 
+    // 2. Stateful Check in Redis
+    const userId = await redis.get<string>(`auth:refresh_token:${refreshToken}`);
+
+    if (!userId || userId !== result.payload.userId) {
+      // Token not found in Redis (Revoked or Expired in Redis but valid signature)
+      throw new HttpUnAuthorizedError('Invalid or revoked refresh token', 'REFRESH_TOKEN_REVOKED');
+    }
+
     const payload = result.payload;
 
-    // Find user and check if refresh token matches
+    // Find user
     const user = await authRepository.findUserById(payload.userId);
-    if (!user || user.refreshToken !== refreshToken) {
-      throw new HttpUnAuthorizedError('Invalid refresh token', 'REFRESH_TOKEN_INVALID');
+    if (!user) {
+      throw new HttpUnAuthorizedError('User not found', 'USER_NOT_FOUND');
     }
+
+    // Match checks out. Rotate tokens.
+
+    // Delete old token
+    await redis.del(`auth:refresh_token:${refreshToken}`);
 
     // Generate new tokens
     const newAccessToken = jwtService.generateAccessToken({ userId: user.id });
     const newRefreshToken = jwtService.generateRefreshToken({ userId: user.id });
 
-    // Update refresh token in database
-    await authRepository.updateUser(user.id, {
-      refreshToken: newRefreshToken,
-    });
+    // Store new token
+    await redis.set(`auth:refresh_token:${newRefreshToken}`, user.id, { ex: REFRESH_TOKEN_TTL });
+
+    // No longer updating DB for refreshToken
+    // await authRepository.updateUser...
 
     logger.info(`Tokens refreshed successfully: ${user.id}`);
 

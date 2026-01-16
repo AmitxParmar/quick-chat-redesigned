@@ -3,20 +3,18 @@ import { HttpStatusCode } from 'axios';
 import { type CustomResponse } from '@/types/common.type';
 import { type AuthRequest } from '@/types/auth.type';
 import Api from '@/lib/api';
-import prisma from '@/lib/prisma';
-import bcrypt from 'bcryptjs';
-import jwtService from '@/lib/jwt';
 import { cookieService } from '@/utils/cookies';
+import AuthService from './auth.service';
 import { User } from '@prisma/client';
 
-/**
- * Normalize WhatsApp ID (add 91 prefix if missing)
- */
-const normalizeWaId = (waId: string): string => {
-  return waId.startsWith('91') ? waId : `91${waId}`;
-};
-
 export default class AuthController extends Api {
+  private authService: AuthService;
+
+  constructor() {
+    super();
+    this.authService = new AuthService();
+  }
+
   /**
    * POST /auth/register - Register a new user
    */
@@ -26,60 +24,14 @@ export default class AuthController extends Api {
     next: NextFunction
   ) => {
     try {
-      const { waId, name, password } = req.body;
-
-      const normalizedWaId = normalizeWaId(waId);
-
-      // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { waId: normalizedWaId },
-      });
-
-      if (existingUser) {
-        return res.status(HttpStatusCode.Conflict).json({
-          message: 'User already exists',
-          data: null,
-        });
-      }
-
-      // Hash password
-      const passwordHash = await bcrypt.hash(password, 12);
-
-      // Create user
-      const user = await prisma.user.create({
-        data: {
-          waId: normalizedWaId,
-          name: name || `User ${waId}`,
-          password: passwordHash,
-          isOnline: true,
-        },
-      });
-
-      // Generate tokens
-      const accessToken = jwtService.generateAccessToken({ userId: user.id });
-      const refreshToken = jwtService.generateRefreshToken({ userId: user.id });
-
-      // Save refresh token
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken },
-      });
+      const result = await this.authService.register(req.body);
 
       // Set cookies
-      cookieService.setTokenCookies(res, accessToken, refreshToken);
+      cookieService.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
 
       this.send(
         res,
-        {
-          user: {
-            id: user.id,
-            waId: user.waId,
-            name: user.name,
-            profilePicture: user.profilePicture,
-            status: user.status,
-            isOnline: user.isOnline,
-          },
-        },
+        { user: result.user },
         HttpStatusCode.Created,
         'User registered successfully'
       );
@@ -97,72 +49,18 @@ export default class AuthController extends Api {
     next: NextFunction
   ) => {
     try {
-      const { waId, password } = req.body;
-
-      const normalizedWaId = normalizeWaId(waId);
-      console.log('[Login] Normalized waId:', normalizedWaId);
-
-      // Find user
-      const user = await prisma.user.findUnique({
-        where: { waId: normalizedWaId },
-      });
-
-      if (!user) {
-        console.log('[Login] User not found with waId:', normalizedWaId);
-        return res.status(HttpStatusCode.NotFound).json({
-          message: 'User not found',
-          data: null,
-        });
-      }
-
-      console.log('[Login] User found:', user.id);
-
-      // Verify password if provided
-      if (password) {
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-          console.log('[Login] Invalid password');
-          return res.status(HttpStatusCode.Unauthorized).json({
-            message: 'Invalid password',
-            data: null,
-          });
-        }
-      }
-
-      // Generate tokens
-      const accessToken = jwtService.generateAccessToken({ userId: user.id });
-      const refreshToken = jwtService.generateRefreshToken({ userId: user.id });
-
-      // Update user
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          isOnline: true,
-          lastSeen: new Date(),
-          refreshToken,
-        },
-      });
+      const result = await this.authService.login(req.body);
 
       // Set cookies
-      cookieService.setTokenCookies(res, accessToken, refreshToken);
+      cookieService.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
 
       this.send(
         res,
-        {
-          user: {
-            id: user.id,
-            waId: user.waId,
-            name: user.name,
-            profilePicture: user.profilePicture,
-            status: user.status,
-            isOnline: user.isOnline,
-          },
-        },
+        { user: result.user },
         HttpStatusCode.Ok,
         'Login successful'
       );
     } catch (e) {
-      console.error('[Login] Error:', e);
       next(e);
     }
   };
@@ -176,29 +74,23 @@ export default class AuthController extends Api {
     next: NextFunction
   ) => {
     try {
-      const token = req.cookies?.refresh_token;
+      const refreshToken = req.cookies?.refresh_token;
 
-      if (token) {
-        try {
-          const result = jwtService.verifyRefreshTokenDetailed(token);
-          if (result.valid && result.payload) {
-            await prisma.user.update({
-              where: { id: result.payload.userId },
-              data: {
-                refreshToken: null,
-                isOnline: false,
-                lastSeen: new Date(),
-              },
-            });
-          }
-        } catch (error) {
-          console.log('Invalid token during logout, clearing cookies anyway');
-        }
+      if (req.user) {
+        await this.authService.logout(req.user.id, refreshToken);
+      } else if (refreshToken) {
+        // Try to clean up Redis even if we don't know the user, 
+        // but our delete requires just the token key if we keyed it by token.
+        // In AuthService.logout we take userId. 
+        // We might need a "logoutByToken" or just ignore if not authenticated.
+        // For now, if no user, we just clear cookies.
       }
 
       cookieService.clearTokenCookies(res);
       this.send(res, null, HttpStatusCode.Ok, 'Logout successful');
     } catch (e) {
+      // Force clear in case of error
+      cookieService.clearTokenCookies(res);
       next(e);
     }
   };
@@ -223,62 +115,13 @@ export default class AuthController extends Api {
         });
       }
 
-      const result = jwtService.verifyRefreshTokenDetailed(token);
+      const result = await this.authService.refreshTokens(token);
 
-      if (!result.valid) {
-        cookieService.clearTokenCookies(res);
-        return res.status(HttpStatusCode.Forbidden).send({
-          message:
-            result.error === 'EXPIRED'
-              ? 'Refresh token expired'
-              : 'Invalid refresh token',
-          code:
-            result.error === 'EXPIRED'
-              ? 'REFRESH_TOKEN_EXPIRED'
-              : 'REFRESH_TOKEN_INVALID',
-          data: null,
-        });
-      }
-
-      // Find user
-      const user = await prisma.user.findUnique({
-        where: { id: result.payload.userId },
-      });
-
-      if (!user || user.refreshToken !== token) {
-        cookieService.clearTokenCookies(res);
-        return res.status(HttpStatusCode.Forbidden).send({
-          message: 'Invalid refresh token',
-          code: 'REFRESH_TOKEN_INVALID',
-          data: null,
-        });
-      }
-
-      // Generate new tokens
-      const accessToken = jwtService.generateAccessToken({ userId: user.id });
-      const newRefreshToken = jwtService.generateRefreshToken({ userId: user.id });
-
-      // Update refresh token
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { refreshToken: newRefreshToken },
-      });
-
-      cookieService.setTokenCookies(res, accessToken, newRefreshToken);
+      cookieService.setTokenCookies(res, result.accessToken, result.refreshToken);
 
       this.send(
         res,
-        {
-          user: {
-            id: user.id,
-            waId: user.waId,
-            name: user.name,
-            profilePicture: user.profilePicture,
-            status: user.status,
-            isOnline: user.isOnline,
-            lastSeen: user.lastSeen,
-          },
-        },
+        { user: result.user },
         HttpStatusCode.Ok,
         'Token refreshed successfully'
       );
@@ -304,17 +147,11 @@ export default class AuthController extends Api {
         });
       }
 
+      const user = await this.authService.getCurrentUser(req.user.id);
+
       this.send(
         res,
-        {
-          id: req.user.id,
-          waId: req.user.waId,
-          name: req.user.name,
-          profilePicture: req.user.profilePicture,
-          status: req.user.status,
-          isOnline: req.user.isOnline,
-          lastSeen: req.user.lastSeen,
-        },
+        user,
         HttpStatusCode.Ok,
         'Profile retrieved successfully'
       );
@@ -339,31 +176,11 @@ export default class AuthController extends Api {
         });
       }
 
-      const { name, profilePicture, status } = req.body;
-
-      const updateData: any = {};
-      if (name !== undefined) updateData.name = name;
-      if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
-      if (status !== undefined) updateData.status = status;
-
-      const user = await prisma.user.update({
-        where: { id: req.user.id },
-        data: updateData,
-      });
+      const user = await this.authService.updateProfile(req.user.id, req.body);
 
       this.send(
         res,
-        {
-          user: {
-            id: user.id,
-            waId: user.waId,
-            name: user.name,
-            profilePicture: user.profilePicture,
-            status: user.status,
-            isOnline: user.isOnline,
-            lastSeen: user.lastSeen,
-          },
-        },
+        { user },
         HttpStatusCode.Ok,
         'Profile updated successfully'
       );
@@ -389,48 +206,7 @@ export default class AuthController extends Api {
       }
 
       const { currentPassword, newPassword } = req.body;
-
-      if (!currentPassword || !newPassword) {
-        return res.status(HttpStatusCode.BadRequest).json({
-          message: 'Current password and new password are required',
-          data: null,
-        });
-      }
-
-      if (newPassword.length < 6) {
-        return res.status(HttpStatusCode.BadRequest).json({
-          message: 'New password must be at least 6 characters long',
-          data: null,
-        });
-      }
-
-      // Get user
-      const user = await prisma.user.findUnique({
-        where: { id: req.user.id },
-      });
-
-      if (!user) {
-        return res.status(HttpStatusCode.NotFound).json({
-          message: 'User not found',
-          data: null,
-        });
-      }
-
-      // Verify current password
-      const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
-      if (!isPasswordValid) {
-        return res.status(HttpStatusCode.Unauthorized).json({
-          message: 'Current password is incorrect',
-          data: null,
-        });
-      }
-
-      // Hash and update new password
-      const newPasswordHash = await bcrypt.hash(newPassword, 12);
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { password: newPasswordHash },
-      });
+      await this.authService.changePassword(req.user.id, currentPassword, newPassword);
 
       this.send(res, null, HttpStatusCode.Ok, 'Password changed successfully');
     } catch (e) {

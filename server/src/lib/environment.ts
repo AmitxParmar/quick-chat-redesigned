@@ -9,7 +9,6 @@ import { config as configDotenv } from 'dotenv';
 import { cleanEnv } from 'envalid';
 import { EnvironmentFile, Environments } from '@/enums/environment.enum';
 import envValidationConfig from '@/config/env-validation.config';
-import { envFileNotFoundError } from '@/utils/helper';
 import { type CommonEnvKeys } from '@/types/environment.type';
 import appConfig from '@/config/app.config';
 
