@@ -40,8 +40,7 @@ export const messageLimiter = rateLimit({
         message: "You're sending messages too fast! Please slow down.",
     },
     skip: () => false, // Always enforce, even in dev
-    // Disable default validations since we're using waId, not IP
-    validate: { default: false },
+    validate: false,
 });
 
 /**
@@ -63,6 +62,5 @@ export const searchLimiter = rateLimit({
         message: "Too many search requests. Please try again in a moment.",
     },
     skip: () => false,
-    // Disable default validations since we're using waId, not IP
-    validate: { default: false },
+    validate: false,
 });
