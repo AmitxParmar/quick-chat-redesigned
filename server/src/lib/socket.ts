@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import jwtService from '@/lib/jwt';
 import authRepository from '@/modules/auth/auth.repository';
 import logger from '@/lib/logger';
+import cacheService from '@/lib/cache';
 import {
     SocketEvents,
     type AuthenticatedSocket,
@@ -18,6 +19,7 @@ class SocketService {
     private static instance: SocketService;
     private pubClient: Redis | null = null;
     private subClient: Redis | null = null;
+    private heartbeatInterval: NodeJS.Timeout | null = null;
 
     /**
      * Gets the singleton instance of SocketService
@@ -80,6 +82,9 @@ class SocketService {
         this.io.on(SocketEvents.CONNECTION, (socket: AuthenticatedSocket) => {
             this.handleConnection(socket);
         });
+
+        // Start heartbeat to refresh online status of connected users
+        this.startHeartbeat();
 
         logger.info('Socket.io initialized');
         return this.io;
@@ -166,6 +171,9 @@ class SocketService {
         if (this.io) {
             this.io.close();
         }
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
         logger.info('Socket.io shutdown complete');
     }
 
@@ -174,6 +182,7 @@ class SocketService {
      */
     private handleConnection(socket: AuthenticatedSocket): void {
         const userId = socket.user?.id;
+        const userWaId = socket.user?.waId;
         logger.info(`User connected: ${userId}`);
 
         // Join user's personal room for targeted notifications
@@ -200,9 +209,52 @@ class SocketService {
         });
 
         // Handle disconnection
-        socket.on(SocketEvents.DISCONNECT, () => {
+        socket.on(SocketEvents.DISCONNECT, async () => {
             logger.info(`User disconnected: ${userId}`);
+            if (userWaId) {
+                await cacheService.setUserOnline(userWaId, false);
+                this.io?.emit('user:offline', { waId: userWaId, lastSeen: Date.now() });
+            }
         });
+
+        // Handle online status check
+        socket.on('user:get-status', async (payload: { waId: string }) => {
+            if (!payload?.waId) return;
+            const isOnline = await cacheService.getUserOnlineStatus(payload.waId);
+            socket.emit('user:status', {
+                waId: payload.waId,
+                isOnline,
+                lastSeen: isOnline ? Date.now() : undefined
+            });
+        });
+
+        // Set initial online status
+        if (userWaId) {
+            cacheService.setUserOnline(userWaId, true);
+            this.io?.emit('user:online', { waId: userWaId });
+        }
+    }
+
+    /**
+     * Periodic heartbeat to refresh online status in Redis
+     * This prevents users from appearing offline if their Redis key expires
+     * while they are still connected.
+     */
+    private startHeartbeat() {
+        // Refresh every 30 seconds (TTL is 60s)
+        this.heartbeatInterval = setInterval(async () => {
+            if (!this.io) return;
+
+            const sockets = await this.io.fetchSockets();
+            for (const socket of sockets) {
+                // Cast to AuthenticatedSocket to access user user
+                const authSocket = socket as unknown as AuthenticatedSocket;
+                if (authSocket.user?.waId) {
+                    // Refresh TTL
+                    await cacheService.setUserOnline(authSocket.user.waId, true);
+                }
+            }
+        }, 30000);
     }
 
     /**

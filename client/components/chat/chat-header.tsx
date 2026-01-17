@@ -3,14 +3,76 @@ import { Avatar, AvatarFallback } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
 import { useUserStore } from "@/store/useUserStore";
+import { useEffect, useState, useMemo } from "react";
+import socketService from "@/services/socket.service";
 
 function ChatHeader() {
   const router = useRouter();
   const { activeChatUser } = useUserStore((state) => state);
+  const [isOnline, setIsOnline] = useState(false);
+  const [lastSeen, setLastSeen] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!activeChatUser?.waId) return;
+
+    const socket = socketService.getSocket();
+
+    // Reset state when user changes
+    setIsOnline(false);
+    setLastSeen(null);
+
+    // Initial status check
+    socket.emit("user:get-status", { waId: activeChatUser.waId });
+
+    const handleStatus = (data: { waId: string; isOnline: boolean; lastSeen?: number }) => {
+      if (data.waId === activeChatUser.waId) {
+        setIsOnline(data.isOnline);
+        if (data.lastSeen) setLastSeen(data.lastSeen);
+      }
+    };
+
+    const handleOnline = (data: { waId: string }) => {
+      if (data.waId === activeChatUser.waId) {
+        setIsOnline(true);
+      }
+    };
+
+    const handleOffline = (data: { waId: string; lastSeen: number }) => {
+      if (data.waId === activeChatUser.waId) {
+        setIsOnline(false);
+        setLastSeen(data.lastSeen);
+      }
+    };
+
+    socket.on("user:status", handleStatus);
+    socket.on("user:online", handleOnline);
+    socket.on("user:offline", handleOffline);
+
+    return () => {
+      socket.off("user:status", handleStatus);
+      socket.off("user:online", handleOnline);
+      socket.off("user:offline", handleOffline);
+    };
+  }, [activeChatUser?.waId]);
 
   const handleBack = () => {
     router.back();
   };
+
+  const formattedLastSeen = useMemo(() => {
+    if (isOnline) return "Online";
+    if (!lastSeen) return "Offline";
+
+    const date = new Date(lastSeen);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    if (isToday) {
+      return `last seen today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else {
+      return `last seen ${date.toLocaleDateString()} at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    }
+  }, [isOnline, lastSeen]);
 
   return (
     <header className="h-16 w-full px-4 py-3 flex items-center z-10 shadow-sm bg-background">
@@ -29,7 +91,7 @@ function ChatHeader() {
                 {activeChatUser?.name}
               </h2>
               <p className="text-sm text-muted-foreground truncate max-w-[120px] sm:max-w-none">
-                online
+                {formattedLastSeen}
               </p>
             </div>
           </div>

@@ -275,6 +275,28 @@ class CacheService {
             await this.del(CacheKeys.USER_CONVERSATIONS(waId));
         }
     }
+
+    /**
+     * Set user online status
+     */
+    async setUserOnline(waId: string, isOnline: boolean): Promise<void> {
+        const key = CacheKeys.USER_ONLINE(waId);
+        if (isOnline) {
+            // Set with TTL to handle unclean disconnects
+            // The socket service should verify/refresh this periodically for active connections
+            await this.set(key, 'true', CacheTTL.USER_ONLINE);
+        } else {
+            await this.del(key);
+        }
+    }
+
+    /**
+     * Get user online status
+     */
+    async getUserOnlineStatus(waId: string): Promise<boolean> {
+        const key = CacheKeys.USER_ONLINE(waId);
+        return await this.exists(key);
+    }
 }
 
 export const cacheService = new CacheService();
