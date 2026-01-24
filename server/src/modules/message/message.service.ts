@@ -73,7 +73,11 @@ export default class MessageService {
         if (page === 1) {
             const cachedMessages = await cacheService.getRecentMessages<Message>(resolvedId, limit);
 
-            if (cachedMessages.length >= limit) {
+            logger.debug(`Cache check for ${resolvedId}: found ${cachedMessages.length} messages (limit: ${limit})`);
+
+            // Return cached data if we have ANY messages in cache
+            // This allows partial cache hits - better UX than always hitting DB
+            if (cachedMessages.length > 0) {
                 logger.info(`Cache HIT for conversation ${resolvedId} (${cachedMessages.length} messages)`);
 
                 // Get total count from cache or DB
@@ -103,6 +107,7 @@ export default class MessageService {
 
         // Warm cache for page 1
         if (page === 1 && messages.length > 0) {
+            logger.debug(`Warming cache for ${resolvedId} with ${messages.length} messages`);
             await this.warmMessagesCache(resolvedId, messages, total);
         }
 
@@ -300,6 +305,15 @@ export default class MessageService {
 
         socketService.emitMessageStatusUpdated(updatedMessage.conversationId, payload);
 
+        // Update cache in background
+        cacheService.updateMessageStatusInCache(
+            updatedMessage.conversationId,
+            updatedMessage.id,
+            status
+        ).catch(err =>
+            logger.warn(`Failed to update message status in cache: ${err.message}`)
+        );
+
         return updatedMessage;
     }
 
@@ -351,18 +365,23 @@ export default class MessageService {
         message: Message,
         participantWaIds: string[]
     ): Promise<void> {
+        logger.debug(`updateCacheAfterSend called for conversation ${conversationId}, message ${message.id}`);
+
         // Add new message to recent messages cache
         await cacheService.cacheRecentMessage(conversationId, message);
+        logger.debug(`Cached message ${message.id} to recent messages`);
 
         // Increment message count if cached
         const countKey = CacheKeys.MESSAGES_COUNT(conversationId);
         const cachedCount = await cacheService.get<number>(countKey);
         if (cachedCount !== null) {
             await cacheService.set(countKey, cachedCount + 1, CacheTTL.MESSAGES_RECENT);
+            logger.debug(`Incremented message count to ${cachedCount + 1}`);
         }
 
         // Invalidate participant conversation lists (they'll refetch)
         await cacheService.invalidateConversationCaches(conversationId, participantWaIds);
+        logger.debug(`Invalidated conversation caches for participants`);
     }
 }
 

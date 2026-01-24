@@ -10,7 +10,8 @@ import {
   updateProfile,
   changePassword,
 } from "@/services/auth.service";
-import { User } from "@/types";
+import type { User, AxiosAuthError, AuthErrorCode } from "@/types";
+import { isAxiosAuthError } from "@/types";
 
 // Query keys
 export const authKeys = {
@@ -18,33 +19,63 @@ export const authKeys = {
   user: () => [...authKeys.all, "user"] as const,
 };
 
+/**
+ * Helper to extract error code from axios error
+ */
+const getErrorCode = (error: unknown): AuthErrorCode | undefined => {
+  if (isAxiosAuthError(error)) {
+    return error.response?.data?.code;
+  }
+  return undefined;
+};
+
+/**
+ * Helper to extract HTTP status from axios error
+ */
+const getErrorStatus = (error: unknown): number | undefined => {
+  if (isAxiosAuthError(error)) {
+    return error.response?.status;
+  }
+  return undefined;
+};
+
+/**
+ * Check if error code indicates user should be logged out
+ */
+const isAuthenticationError = (error: unknown): boolean => {
+  const status = getErrorStatus(error);
+  const code = getErrorCode(error);
+
+  return (
+    status === 401 ||
+    code === "ACCESS_TOKEN_MISSING" ||
+    code === "ACCESS_TOKEN_EXPIRED" ||
+    code === "ACCESS_TOKEN_INVALID" ||
+    code === "REFRESH_TOKEN_MISSING" ||
+    code === "REFRESH_TOKEN_EXPIRED" ||
+    code === "REFRESH_TOKEN_INVALID" ||
+    code === "REFRESH_TOKEN_REVOKED" ||
+    code === "USER_NOT_FOUND"
+  );
+};
+
 // Fetch current user profile
 export const useCurrentUser = (options?: { enabled?: boolean }) => {
-
   return useQuery({
     queryKey: authKeys.user(),
     queryFn: async () => {
       const data = await getProfile();
-
-      console.log("messages", data.data)
+      console.log("messages", data.data);
       return data.data;
     },
-    retry: (failureCount, error: any) => {
+    retry: (failureCount, error: unknown) => {
       // Don't retry on authentication errors
-      const status = error?.response?.status;
-      const code = error?.response?.data?.code;
-
-      if (status === 401 ||
-        code === "ACCESS_TOKEN_MISSING" ||
-        code === "ACCESS_TOKEN_EXPIRED" ||
-        code === "ACCESS_TOKEN_INVALID" ||
-        code === "REFRESH_TOKEN_MISSING" ||
-        code === "REFRESH_TOKEN_EXPIRED" ||
-        code === "REFRESH_TOKEN_INVALID") {
+      if (isAuthenticationError(error)) {
         return false;
       }
       return failureCount < 2;
     },
+    staleTime: 1000 * 60 * 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     enabled: options?.enabled !== undefined ? options.enabled : true,
@@ -62,20 +93,8 @@ const useAuth = () => {
   const isLoading = userQuery.isLoading;
   const isAuthenticated = !!(userQuery.data && !userQuery.error);
 
-  // Check for authentication errors
-  const error = userQuery.error as any;
-  const errorStatus = error?.response?.status;
-  const errorCode = error?.response?.data?.code;
-
-  const isUnauthenticated =
-    errorStatus === 401 ||
-    errorCode === "ACCESS_TOKEN_MISSING" ||
-    errorCode === "ACCESS_TOKEN_EXPIRED" ||
-    errorCode === "ACCESS_TOKEN_INVALID" ||
-    errorCode === "REFRESH_TOKEN_MISSING" ||
-    errorCode === "REFRESH_TOKEN_EXPIRED" ||
-    errorCode === "REFRESH_TOKEN_INVALID" ||
-    errorCode === "USER_NOT_FOUND";
+  // Check for authentication errors with proper typing
+  const isUnauthenticated = isAuthenticationError(userQuery.error);
 
   // Redirect to login if unauthenticated and not loading
   useEffect(() => {
@@ -84,7 +103,7 @@ const useAuth = () => {
       if (typeof window !== "undefined") {
         try {
           router.push("/login");
-        } catch (error) {
+        } catch {
           // Fallback to window.location if router fails
           window.location.href = "/login";
         }
@@ -119,9 +138,9 @@ export const useLogin = () => {
       return data;
     },
     onSuccess: (data) => {
-      if (data.success && data.user) {
+      if (data.data?.user) {
         // Server sets cookies automatically, just update the user data
-        queryClient.setQueryData(authKeys.user(), data.user);
+        queryClient.setQueryData(authKeys.user(), data.data.user);
       }
     },
   });
@@ -145,9 +164,9 @@ export const useRegister = () => {
       return data;
     },
     onSuccess: (data) => {
-      if (data.success && data.user) {
+      if (data.data?.user) {
         // Server sets cookies automatically, just update the user data
-        queryClient.setQueryData(authKeys.user(), data.user);
+        queryClient.setQueryData(authKeys.user(), data.data.user);
       }
     },
   });
@@ -185,22 +204,25 @@ export const useRefreshToken = () => {
   return useMutation({
     mutationFn: refreshTokenApi,
     onSuccess: (data) => {
-      if (data.success && data.user) {
+      if (data.data?.user) {
         // Server sets new cookies automatically, just update the user data
-        queryClient.setQueryData(authKeys.user(), data.user);
+        queryClient.setQueryData(authKeys.user(), data.data.user);
       }
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
       // If refresh fails, clear everything and redirect to login
       queryClient.clear();
 
       // Redirect to login page if in browser
       if (typeof window !== "undefined") {
-        const errorCode = error?.response?.data?.code;
+        const errorCode = getErrorCode(error);
         // Only redirect if it's actually an auth error
-        if (errorCode === "REFRESH_TOKEN_MISSING" ||
+        if (
+          errorCode === "REFRESH_TOKEN_MISSING" ||
           errorCode === "REFRESH_TOKEN_EXPIRED" ||
-          errorCode === "REFRESH_TOKEN_INVALID") {
+          errorCode === "REFRESH_TOKEN_INVALID" ||
+          errorCode === "REFRESH_TOKEN_REVOKED"
+        ) {
           window.location.href = "/login";
         }
       }
@@ -215,8 +237,8 @@ export const useUpdateProfile = () => {
   return useMutation({
     mutationFn: updateProfile,
     onSuccess: (data) => {
-      if (data.success && data.user) {
-        queryClient.setQueryData(authKeys.user(), data.user);
+      if (data.data?.user) {
+        queryClient.setQueryData(authKeys.user(), data.data.user);
       }
     },
   });

@@ -218,6 +218,7 @@ export function useMessages(conversationId: string) {
     },
     initialPageParam: 1,
     retry: 2,
+    staleTime: 1000 * 60 * 1,
 
     refetchOnWindowFocus: false,
     refetchOnMount: true,

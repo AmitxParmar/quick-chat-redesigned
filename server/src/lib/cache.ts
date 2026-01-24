@@ -222,14 +222,19 @@ class CacheService {
     async cacheRecentMessage<T>(conversationId: string, message: T): Promise<void> {
         const key = CacheKeys.MESSAGES_RECENT(conversationId);
 
+        logger.debug(`Caching message to key: ${key}`);
+
         // Push to the front of the list (newest first)
-        await this.lpush(key, message);
+        const pushResult = await this.lpush(key, message);
+        logger.debug(`LPUSH result: ${pushResult}`);
 
         // Trim to keep only the most recent messages
         await this.ltrim(key, 0, CacheLimits.MESSAGES_RECENT - 1);
 
         // Set/refresh expiration
         await this.expire(key, CacheTTL.MESSAGES_RECENT);
+
+        logger.debug(`Message cached successfully to ${key}`);
     }
 
     /**
@@ -297,7 +302,61 @@ class CacheService {
         const key = CacheKeys.USER_ONLINE(waId);
         return await this.exists(key);
     }
+
+    /**
+     * Update message status in cache in-place
+     * This avoids invalidating the whole cache and forcing a DB hit
+     */
+    async updateMessageStatusInCache(
+        conversationId: string,
+        messageId: string,
+        newStatus: string
+    ): Promise<boolean> {
+        const key = CacheKeys.MESSAGES_RECENT(conversationId);
+
+        try {
+            // 1. Get all cached messages (usually limited to 100)
+            // We need to fetch all to find the index
+            const messages = await this.lrange<any>(key, 0, -1);
+            logger.debug(`[Cache] Found ${messages.length} messages in cache key ${key}`);
+
+            if (messages.length === 0) {
+                logger.warn(`[Cache] cache empty for ${key}, cannot update message ${messageId}`);
+                return false;
+            }
+
+            // 2. Find the message index
+            const index = messages.findIndex((msg) => msg.id === messageId);
+            logger.debug(`[Cache] Message ${messageId} found at index ${index}`);
+
+            if (index === -1) {
+                logger.warn(`[Cache] Message ${messageId} not found in cache for update. Messages in cache: ${messages.map(m => m.id).join(', ')}`);
+                return false;
+            }
+
+            // 3. Update the status in memory
+            const messageToUpdate = messages[index];
+            const oldStatus = messageToUpdate.status;
+            messageToUpdate.status = newStatus;
+
+            // 4. Update the specific item in Redis list
+            // LSET key index value
+            const serialized = JSON.stringify(messageToUpdate);
+            await redis.lset(key, index, serialized);
+
+            logger.debug(`[Cache] Updated message ${messageId} status from ${oldStatus} to ${newStatus} in cache at index ${index}`);
+
+            // 5. Refresh TTL
+            await this.expire(key, CacheTTL.MESSAGES_RECENT);
+
+            return true;
+        } catch (error) {
+            logger.error(`Failed to update message status in cache for ${messageId}:`, error);
+            return false;
+        }
+    }
 }
+
 
 export const cacheService = new CacheService();
 export default cacheService;

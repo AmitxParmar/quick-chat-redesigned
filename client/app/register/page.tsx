@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, type RegisterSchema } from "@/schemas/auth";
+import { isAxiosAuthError, type AxiosAuthError } from "@/types";
 import {
   Form,
   FormField,
@@ -16,16 +17,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AxiosError } from "axios";
-
-interface ApiErrorResponse {
-  message: string;
-}
 
 function RegisterPage() {
   const router = useRouter();
   const { mutate: register, isPending, error, data } = useRegister();
- 
+
   // handle default form values and form validations
   const form = useForm<RegisterSchema>({
     resolver: zodResolver(registerSchema),
@@ -50,14 +46,14 @@ function RegisterPage() {
   // get error message from axios.response.data object and return it.
   const getErrorMessage = () => {
     if (!error) return null;
-    
-    if (error instanceof AxiosError) {
-      const errorData = error.response?.data as ApiErrorResponse;
+
+    if (isAxiosAuthError(error)) {
+      const errorData = (error as AxiosAuthError).response?.data;
       if (errorData?.message) {
         return errorData.message;
+      }
     }
-    }
-    return "Login failed";
+    return "Registration failed";
   };
 
   return (
@@ -138,7 +134,7 @@ function RegisterPage() {
                 {getErrorMessage()}
               </div>
             )}
-            {data && data.success && (
+            {data && (
               <div className="text-green-600 dark:text-green-400 text-sm text-center mt-1">
                 Account created!
               </div>

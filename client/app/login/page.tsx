@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema, type LoginSchema } from "@/schemas/auth";
-import { AxiosError } from "axios";
+import { isAxiosAuthError, type AxiosAuthError } from "@/types";
 import {
   Form,
   FormField,
@@ -22,10 +22,6 @@ const DEMO_ACCOUNTS = [
   { waId: "919937320320", password: "demo123" },
   { waId: "911234567890", password: "demo123" },
 ];
-
-interface ApiErrorResponse {
-  message: string;
-}
 
 function LoginPage() {
   const router = useRouter();
@@ -68,8 +64,8 @@ function LoginPage() {
   const getErrorMessage = () => {
     if (!error) return null;
 
-    if (error instanceof AxiosError) {
-      const errorData = error.response?.data as ApiErrorResponse;
+    if (isAxiosAuthError(error)) {
+      const errorData = (error as AxiosAuthError).response?.data;
       if (errorData?.message) {
         return errorData.message;
       }
@@ -142,7 +138,7 @@ function LoginPage() {
                 {getErrorMessage()}
               </div>
             )}
-            {data && data.success && (
+            {data && (
               <div className="text-green-600 dark:text-green-400 text-sm text-center mt-1">
                 Login successful!
               </div>

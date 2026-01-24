@@ -145,6 +145,7 @@ export function useConversations() {
     queryKey: ["conversations", user?.waId],
     queryFn: () => fetchAllConversations(),
     retry: 2,
+    staleTime: 1000 * 60 * 1,
     enabled: !!isAuthenticated && !!user?.waId, // Only run when authenticated and user exists
     refetchOnWindowFocus: false,
     refetchOnMount: false,
