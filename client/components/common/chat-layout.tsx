@@ -3,9 +3,7 @@ import React from "react";
 import Conversations from "../conversations";
 import { useIsMobile } from "@/hooks/use-mobile";
 import useAuth from "@/hooks/useAuth";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { Loader, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 const ChatLayout = ({ children }: { children: React.ReactNode }) => {
   const isMobile = useIsMobile();

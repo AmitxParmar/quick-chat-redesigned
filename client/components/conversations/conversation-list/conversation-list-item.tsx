@@ -2,7 +2,7 @@
 import React, { useCallback, useMemo } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import MessageStatus from "@/components/common/message-status";
-import { useUserStore } from "@/store/useUserStore";
+import { useUserStore } from "@/store/user-store";
 import { Conversation } from "@/types";
 import { useRouter } from "next/navigation";
 import { calculateTime } from "@/utils/calculateTime";
@@ -17,7 +17,7 @@ interface ConversationListItemProps {
 export const ConversationListItem = React.memo<ConversationListItemProps>(
   ({ data }) => {
     const router = useRouter();
-    const { setActiveChatUser } = useUserStore();
+    const setActiveChatUser = useUserStore((state) => state.setActiveChatUser);
     const deleteConversation = useDeleteConversation();
     const { user } = useAuth();
 

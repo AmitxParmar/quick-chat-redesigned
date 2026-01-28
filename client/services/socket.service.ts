@@ -17,7 +17,7 @@ class SocketService {
             // Extract origin from baseURL to ensure we connect to root
             // api.defaults.baseURL is like "http://localhost:8000/api/v1/development"
             // We want "http://localhost:8000"
-            let url = "http://localhost:5000";
+            let url = "http://localhost:8000";
             const apiBase = api.defaults.baseURL;
 
             if (apiBase) {
@@ -45,6 +45,11 @@ class SocketService {
                 autoConnect: true,
                 withCredentials: true,
                 reconnection: true,
+                perMessageDeflate: {
+                    threshold: 1024,
+                },
+                // Disable HTTP polling compression on the client
+
                 reconnectionAttempts: 5,
                 reconnectionDelay: 1000,
             });

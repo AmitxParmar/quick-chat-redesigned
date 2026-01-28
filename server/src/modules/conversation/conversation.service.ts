@@ -197,7 +197,9 @@ export default class ConversationService {
 
         // Emit socket events
         if (updatedConversation) {
-            socketService.emitConversationUpdated(conversationId, updatedConversation);
+            const participants = updatedConversation.participants.map((p) => p.waId);
+
+            socketService.emitConversationUpdated(conversationId, updatedConversation, participants);
 
             // Emit bulk mark-as-read event
             socketService.emitMessagesMarkedAsRead(conversationId, {
@@ -205,7 +207,7 @@ export default class ConversationService {
                 waId,
                 updatedMessages: updateResult.count,
                 conversation: updatedConversation,
-            });
+            }, participants);
 
             // Emit status update for the last message so sender sees the blue tick immediately
             if (lastMsg && lastMsg.status === 'read') {
@@ -214,7 +216,7 @@ export default class ConversationService {
                     conversationId,
                     status: 'read',
                     message: lastMsg,
-                });
+                }, [lastMsg.from, lastMsg.to]);
             }
 
             logger.info(
@@ -265,8 +267,10 @@ export default class ConversationService {
             // Archive conversation
             result = await conversationRepository.archive(conversationId);
 
+            const participants = (result.participants || conversation.participants).map(p => p.waId);
+
             // Emit socket event
-            socketService.emitConversationUpdated(conversationId, result);
+            socketService.emitConversationUpdated(conversationId, result, participants);
 
             logger.info(`[deleteConversation] Archived conversation: ${conversationId}`);
 
@@ -289,12 +293,14 @@ export default class ConversationService {
             // Delete conversation
             result = await conversationRepository.delete(conversationId);
 
+            const participants = (conversation.participants).map((p) => p.waId);
+
             // Emit socket event
-            socketService.getIO()?.emit('conversation:deleted', {
+            socketService.emitConversationDeleted(conversationId, {
                 conversationId,
                 waId,
-                participants: (conversation.participants).map((p) => p.waId),
-            });
+                participants: participants,
+            }, participants);
 
             logger.info(
                 `[deleteConversation] Permanently deleted conversation: ${conversationId}`

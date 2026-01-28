@@ -4,22 +4,16 @@ import ChatContainer from "./chat-container";
 import MessageBar from "./message-bar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
-import { useUserStore } from "@/store/useUserStore";
+import { useChatParams } from "@/hooks/use-chat-params";
+import { useSyncActiveUser } from "@/hooks/use-sync-active-user";
 
-function Chat({
-  conversationId,
-  activeChatUserId,
-}: {
-  conversationId: string;
-  activeChatUserId: string;
-}) {
-  const { setActiveChatUserById } = useUserStore((state) => state);
+function Chat() {
+  const { activeChatUserId } = useChatParams();
+
+  // Logic extracted to hook
+  useSyncActiveUser(activeChatUserId);
+
   const isMobile = useIsMobile();
-
-  useEffect(() => {
-    setActiveChatUserById(activeChatUserId);
-  }, [activeChatUserId]);
 
   return (
     <div
@@ -27,8 +21,8 @@ function Chat({
     >
       <div className="w-screen lg:w-full flex flex-col h-screen z-10">
         <ChatHeader />
-        <ChatContainer conversationId={conversationId} />
-        <MessageBar conversationId={conversationId} />
+        <ChatContainer />
+        <MessageBar />
       </div>
     </div>
   );

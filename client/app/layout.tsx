@@ -1,3 +1,4 @@
+import GlobalSocketListener from "@/components/common/global-socket-listener";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -31,6 +32,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} zoom-in-100 antialiased max-h-screen h-screen`}
       >
         <QueryProvider>
+          <GlobalSocketListener />
           <ThemeProvider>{children}</ThemeProvider>
           <Toaster />
         </QueryProvider>

@@ -19,14 +19,13 @@ const MessageBubble = ({
   isReceiver,
 }: MessageBubbleProps) => (
   <div
-    className={`relative flex w-full mb-2 ${
-      isSender ? "justify-end" : "justify-start"
-    }`}
+    className={`relative flex w-full mb-2 ${isSender ? "justify-end" : "justify-start"
+      }`}
   >
     {/* Receiver side: show avatar on upper top left */}
     {isReceiver && (
       <div className="flex flex-col items-start mr-2">
-        <Avatar className="size-8 mb-1">
+        <Avatar className="size-8 border-2 mb-1">
           <AvatarFallback>{message.contact.name[0]}</AvatarFallback>
         </Avatar>
       </div>
@@ -82,7 +81,7 @@ const MessageBubble = ({
           </div>
         )}
         <div className="flex gap-2 items-end ">
-          <span className="break-all leading-7">{message.text}</span>
+          <span className="break-all text-white leading-7">{message.text}</span>
           <div className="flex gap-1 items-end text-wa-info">
             <span className="text-[11px] pt-1 min-w-fit">
               {calculateTime(message?.createdAt)}

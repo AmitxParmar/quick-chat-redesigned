@@ -1,14 +1,15 @@
 import { ArrowLeft, MoreVertical, Phone, Video } from "lucide-react";
+import { SocketEvents } from "@/types/socket-events";
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
-import { useUserStore } from "@/store/useUserStore";
+import { useUserStore } from "@/store/user-store";
 import { useEffect, useState, useMemo } from "react";
 import socketService from "@/services/socket.service";
 
 function ChatHeader() {
   const router = useRouter();
-  const { activeChatUser } = useUserStore((state) => state);
+  const activeChatUser = useUserStore((state) => state.activeChatUser);
   const [isOnline, setIsOnline] = useState(false);
   const [lastSeen, setLastSeen] = useState<number | null>(null);
 
@@ -22,7 +23,7 @@ function ChatHeader() {
     setLastSeen(null);
 
     // Initial status check
-    socket.emit("user:get-status", { waId: activeChatUser.waId });
+    socket.emit(SocketEvents.USER_GET_STATUS, { waId: activeChatUser.waId });
 
     const handleStatus = (data: { waId: string; isOnline: boolean; lastSeen?: number }) => {
       if (data.waId === activeChatUser.waId) {
@@ -44,14 +45,14 @@ function ChatHeader() {
       }
     };
 
-    socket.on("user:status", handleStatus);
-    socket.on("user:online", handleOnline);
-    socket.on("user:offline", handleOffline);
+    socket.on(SocketEvents.USER_STATUS, handleStatus);
+    socket.on(SocketEvents.USER_ONLINE, handleOnline);
+    socket.on(SocketEvents.USER_OFFLINE, handleOffline);
 
     return () => {
-      socket.off("user:status", handleStatus);
-      socket.off("user:online", handleOnline);
-      socket.off("user:offline", handleOffline);
+      socket.off(SocketEvents.USER_STATUS, handleStatus);
+      socket.off(SocketEvents.USER_ONLINE, handleOnline);
+      socket.off(SocketEvents.USER_OFFLINE, handleOffline);
     };
   }, [activeChatUser?.waId]);
 

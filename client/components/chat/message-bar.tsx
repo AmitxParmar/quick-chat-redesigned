@@ -1,15 +1,20 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import EmojiPicker, { EmojiClickData } from "emoji-picker-react";
+import dynamic from "next/dynamic";
+import { EmojiClickData } from "emoji-picker-react";
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), { ssr: false });
 import { Mic, Plus, SendHorizontal, Smile } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useSendMessage } from "@/hooks/useMessages";
-import { useUserStore } from "@/store/useUserStore";
+import { useUserStore } from "@/store/user-store";
 import useAuth from "@/hooks/useAuth";
 
-function MessageBar({ conversationId }: { conversationId: string }) {
-  const { activeChatUser } = useUserStore((state) => state);
+import { useChatParams } from "@/hooks/use-chat-params";
+
+function MessageBar() {
+  const { conversationId } = useChatParams();
+  const activeChatUser = useUserStore((state) => state.activeChatUser);
   const { user: activeUser } = useAuth();
   const { mutate: sendMessage } = useSendMessage();
   const [message, setMessage] = useState("");
@@ -87,7 +92,7 @@ function MessageBar({ conversationId }: { conversationId: string }) {
   };
 
   return (
-    <div className="bg-message-bar shadow-sm rounded-full h-message-bar mx-3 mb-3 px-1.5 py-1 flex items-center gap-x-0.5 relative">
+    <div className="dark:bg-message-bar shadow-sm rounded-full h-message-bar mx-3 mb-3 px-1.5 py-1 flex items-center gap-x-0.5 relative">
       <div className="flex relative items-center h-full max-w-3xs">
         <Button
           size={"icon"}

@@ -67,7 +67,7 @@ export default class MessageService {
         }
 
         const page = query.page || 1;
-        const limit = Math.min(query.limit || 25, 100);
+        const limit = Math.min(query.limit || 50, 200);
 
         // Try cache for page 1 (most recent messages)
         if (page === 1) {
@@ -165,7 +165,7 @@ export default class MessageService {
         }
 
         const page = searchQuery.page || 1;
-        const limit = Math.min(searchQuery.limit || 25, 100);
+        const limit = Math.min(searchQuery.limit || 50, 200);
 
         const { messages, total } = await messageRepository.searchMessages(
             options.userWaId,
@@ -253,10 +253,10 @@ export default class MessageService {
         };
 
         // Emit message created event
-        socketService.emitMessageCreated(conversationId, payload);
+        socketService.emitMessageCreated(conversationId, payload, [options.userWaId, data.to]);
 
         // Emit conversation updated event
-        socketService.emitConversationUpdated(conversationId, conversation);
+        socketService.emitConversationUpdated(conversationId, conversation, [options.userWaId, data.to]);
 
         return {
             message,
@@ -303,7 +303,7 @@ export default class MessageService {
             message: updatedMessage,
         };
 
-        socketService.emitMessageStatusUpdated(updatedMessage.conversationId, payload);
+        socketService.emitMessageStatusUpdated(updatedMessage.conversationId, payload, [updatedMessage.from, updatedMessage.to]);
 
         // Update cache in background
         cacheService.updateMessageStatusInCache(

@@ -10,6 +10,7 @@ import { io, type Socket } from "socket.io-client";
 import api from "@/lib/api";
 import { Conversation } from "@/types";
 import useAuth from "@/hooks/useAuth";
+import { SocketEvents } from "@/types/socket-events";
 
 import { socketService } from "@/services/socket.service";
 
@@ -125,17 +126,17 @@ export function useConversations() {
     markAsReadListenerRef.current = onMessagesMarkedAsRead;
 
     // Add listeners to socket
-    socket.on("conversation:updated", onConversationUpdated);
-    socket.on("messages:marked-as-read", onMessagesMarkedAsRead);
+    socket.on(SocketEvents.CONVERSATION_UPDATED, onConversationUpdated);
+    socket.on(SocketEvents.MESSAGES_MARKED_AS_READ, onMessagesMarkedAsRead);
 
     // Cleanup function
     return () => {
       if (listenerRef.current) {
-        socket.off("conversation:updated", listenerRef.current);
+        socket.off(SocketEvents.CONVERSATION_UPDATED, listenerRef.current);
         listenerRef.current = null;
       }
       if (markAsReadListenerRef.current) {
-        socket.off("messages:marked-as-read", markAsReadListenerRef.current);
+        socket.off(SocketEvents.MESSAGES_MARKED_AS_READ, markAsReadListenerRef.current);
         markAsReadListenerRef.current = null;
       }
     };

@@ -42,6 +42,8 @@ class SocketService {
                 origin: process.env.CLIENT_URL || 'http://localhost:3000',
                 credentials: true,
             },
+            perMessageDeflate: false,
+            httpCompression: false
         });
 
         // Setup Redis adapter for horizontal scaling (if REDIS_URL is configured)
@@ -189,6 +191,9 @@ class SocketService {
         if (userId) {
             socket.join(`user:${userId}`);
         }
+        if (userWaId) {
+            socket.join(`user:${userWaId}`);
+        }
 
         // Handle room joining
         socket.on(SocketEvents.JOIN_ROOM, (room: string) => {
@@ -228,6 +233,21 @@ class SocketService {
             });
         });
 
+        // Handle message sending (Direct Socket Relay - No DB)
+        socket.on(SocketEvents.MESSAGE_SEND, (payload: { message: Message; conversationId: string }) => {
+            const { message, conversationId } = payload;
+
+            if (!message || !conversationId) return;
+
+            logger.info(`Relaying message ${message.id} for conversation ${conversationId}`);
+
+            // Broadcast to conversation room (including sender if they have multiple tabs)
+            // AND participants specifically
+            const participants = [message.from, message.to];
+
+            this.emitMessageCreated(conversationId, { message, conversationId }, participants);
+        });
+
         // Set initial online status
         if (userWaId) {
             cacheService.setUserOnline(userWaId, true);
@@ -245,9 +265,11 @@ class SocketService {
         this.heartbeatInterval = setInterval(async () => {
             if (!this.io) return;
 
-            const sockets = await this.io.fetchSockets();
-            for (const socket of sockets) {
-                // Cast to AuthenticatedSocket to access user user
+            // Optimised heartbeat: iterate only over LOCAL sockets
+            // fetchSockets() broadcasts to all nodes which is expensive and unnecessary for this local check
+            const sockets = this.io.sockets.sockets;
+
+            for (const [_, socket] of sockets) {
                 const authSocket = socket as unknown as AuthenticatedSocket;
                 if (authSocket.user?.waId) {
                     // Refresh TTL
@@ -281,33 +303,6 @@ class SocketService {
     }
 
     /**
-     * Broadcasts a task created event to all connected clients
-     */
-    public emitTaskCreated(payload: TaskEventPayload): void {
-        if (!this.io) return;
-        this.io.emit(SocketEvents.TASK_CREATED, payload);
-        logger.info(`Emitted task:created for task ${payload.taskId}`);
-    }
-
-    /**
-     * Broadcasts a task updated event to all connected clients
-     */
-    public emitTaskUpdated(payload: TaskEventPayload): void {
-        if (!this.io) return;
-        this.io.emit(SocketEvents.TASK_UPDATED, payload);
-        logger.info(`Emitted task:updated for task ${payload.taskId}`);
-    }
-
-    /**
-     * Broadcasts a task deleted event to all connected clients
-     */
-    public emitTaskDeleted(taskId: string): void {
-        if (!this.io) return;
-        this.io.emit(SocketEvents.TASK_DELETED, { taskId });
-        logger.info(`Emitted task:deleted for task ${taskId}`);
-    }
-
-    /**
      * Sends a notification to a specific user
      */
     public sendNotificationToUser(userId: string, notification: NotificationPayload): void {
@@ -329,57 +324,104 @@ class SocketService {
      * Broadcasts a message created event to conversation room
      * Client expectation: { message: Message; conversationId: string }
      */
-    public emitMessageCreated(conversationId: string, payload: { message: Message; conversationId: string }): void {
+    /**
+     * Broadcasts a message created event to conversation room and participants
+     */
+    public emitMessageCreated(conversationId: string, payload: { message: Message; conversationId: string }, participants?: string[]): void {
         if (!this.io) return;
-        // Emit to conversation room (so people actually viewing the chat get it)
+
+        // 1. Emit to conversation room (for active chat users)
         this.io.to(conversationId).emit('message:created', payload);
 
-
-
-        // Better strategy: Emit to all participants' user rooms if we know them, 
-        // OR rely on the fact that if they are online, they probably joined the conversation room via some list view?
-        // Actually, users usually join conversation rooms only when they OPEN the conversation.
-        // For conversation list updates, we need to emit to user rooms or a global event.
-
-        // The client code listens to `conversation:updated` on `getSocekt()` which is global.
-        // But `message:created` is also listened to in `useMessages` (active chat).
-
-        // Let's also emit to the global namespace or specific user rooms if possible.
-        // For simplicity and matching current client logic, we'll keep it as is but ensure the payload is correct.
-
-        this.io.emit('message:created', payload);
-        logger.info(`Emitted message:created for conversation ${conversationId}`);
+        // 2. Emit to specific user rooms (for conversation list updates)
+        // If participants are provided, emit to their specific rooms
+        if (participants && participants.length > 0) {
+            participants.forEach(waId => {
+                this.io?.to(`user:${waId}`).emit('message:created', payload);
+            });
+            logger.info(`Emitted message:created for conversation ${conversationId} to ${participants.length} participants`);
+        } else {
+            // Fallback: Global emit if no participants provided (trying to avoid this)
+            // But typically this method is called with participants now
+            // keeping global emit as safety net ONLY if no participants? 
+            // Better to just Log warning and NOT emit globally to force migration
+            logger.warn(`emitMessageCreated called without participants for ${conversationId} - skipping targeted emit`);
+            // Legacy global emit (remove this once verified)
+            // this.io.emit('message:created', payload); 
+        }
     }
 
     /**
      * Broadcasts a conversation updated event
      * Client expectation: Conversation object
      */
-    public emitConversationUpdated(conversationId: string, conversation: Conversation): void {
+    /**
+     * Broadcasts a conversation updated event to participants
+     */
+    public emitConversationUpdated(conversationId: string, conversation: Conversation, participants?: string[]): void {
         if (!this.io) return;
-        // Emit to global (or user specific rooms would be better, but sticking to existing pattern)
-        this.io.emit('conversation:updated', conversation);
-        logger.info(`Emitted conversation:updated for conversation ${conversationId}`);
+
+        if (participants && participants.length > 0) {
+            participants.forEach(waId => {
+                this.io?.to(`user:${waId}`).emit('conversation:updated', conversation);
+            });
+            logger.info(`Emitted conversation:updated for conversation ${conversationId} to ${participants.length} participants`);
+        } else {
+            logger.warn(`emitConversationUpdated called without participants for ${conversationId}`);
+            // Fallback to global emit only if necessary during migration
+            // this.io.emit('conversation:updated', conversation);
+        }
     }
 
     /**
      * Broadcasts a message status update event
      * Client expectation: { id, conversationId, status, message }
      */
-    public emitMessageStatusUpdated(conversationId: string, payload: { id: string; conversationId: string; status: string; message: Message }): void {
+    public emitMessageStatusUpdated(conversationId: string, payload: { id: string; conversationId: string; status: string; message: Message }, participants?: string[]): void {
         if (!this.io) return;
+
+        // Always emit to conversation room (active chat)
         this.io.to(conversationId).emit('message:status-updated', payload);
-        this.io.emit('message:status-updated', payload);
+
+        // Also emit to participants (specifically sender needs to know)
+        if (participants && participants.length > 0) {
+            participants.forEach(waId => {
+                this.io?.to(`user:${waId}`).emit('message:status-updated', payload);
+            });
+        }
+
         logger.info(`Emitted message:status-updated for message ${payload.id}`);
     }
 
     /**
      * Broadcasts when messages are marked as read
      */
-    public emitMessagesMarkedAsRead(conversationId: string, payload: { conversationId: string; waId: string; updatedMessages: number; conversation: Conversation }): void {
+    public emitMessagesMarkedAsRead(conversationId: string, payload: { conversationId: string; waId: string; updatedMessages: number; conversation: Conversation }, participants?: string[]): void {
         if (!this.io) return;
-        this.io.emit('messages:marked-as-read', payload);
+
+        if (participants && participants.length > 0) {
+            participants.forEach(waId => {
+                this.io?.to(`user:${waId}`).emit('messages:marked-as-read', payload);
+            });
+        }
+
         logger.info(`Emitted messages:marked-as-read for conversation ${conversationId}`);
+    }
+
+    /**
+     * Broadcasts a conversation deleted event
+     */
+    public emitConversationDeleted(conversationId: string, payload: { conversationId: string; waId: string; participants: string[] }, participants?: string[]): void {
+        if (!this.io) return;
+
+        if (participants && participants.length > 0) {
+            participants.forEach(waId => {
+                this.io?.to(`user:${waId}`).emit('conversation:deleted', payload);
+            });
+            logger.info(`Emitted conversation:deleted for conversation ${conversationId} to ${participants.length} participants`);
+        } else {
+            logger.warn(`emitConversationDeleted called without participants for ${conversationId}`);
+        }
     }
 }
 

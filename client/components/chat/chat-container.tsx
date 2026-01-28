@@ -2,138 +2,93 @@ import MessageLoader from "../common/message-loader";
 import MessageBubble from "./message-bubble";
 import { useMessages } from "@/hooks/useMessages";
 import { useAutoMarkAsRead } from "@/hooks/useConversations";
-import { memo, useMemo, useRef, useEffect } from "react";
+import { memo, useMemo, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, XCircle } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 import useAuth from "./../../hooks/useAuth";
+import { useVirtualizer } from "@tanstack/react-virtual";
+
+import { useChatParams } from "@/hooks/use-chat-params";
 
 /**
- * ChatContainer with WhatsApp-like scroll behavior:
- * - Messages are displayed oldest at top, newest at bottom
+ * ChatContainer with virtualization and WhatsApp-like scroll behavior:
+ * - Messages are virtualized for performance (only visible ones render)
  * - Auto-scrolls to bottom when new messages arrive
- * - "Load More" button appears at the top to fetch older messages
- * - Maintains scroll position when loading more messages
+ * - Maintains scroll position when loading older messages at the top
  */
-function ChatContainer({ conversationId }: { conversationId: string }) {
+function ChatContainer() {
+  const { conversationId } = useChatParams();
   const { data, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useMessages(conversationId);
   const { user: activeUser } = useAuth();
   const { markConversationAsRead } = useAutoMarkAsRead();
 
-  // Ref for the scrollable container
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Track previous scroll height for scroll restoration after loading more
+  // Flatten messages for the virtualizer
+  const allMessages = useMemo(() => {
+    if (!data?.pages) return [];
+    return data.pages.flatMap((page) => page.messages);
+  }, [data?.pages]);
+
+  // Setup Virtualizer
+  const rowVirtualizer = useVirtualizer({
+    count: allMessages.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: useCallback(() => 80, []), // Estimates based on typical bubble heights
+    overscan: 10,
+    useFlushSync: false, // Performance optimization: disable synchronous updates to improve INP
+  });
+
+  // Track previous scroll dimensions for restoration after loading older messages
   const prevScrollHeightRef = useRef<number>(0);
   const isLoadingMoreRef = useRef<boolean>(false);
 
-  // Memoize the rendered message bubbles for performance
-  // Backend now returns newest first (descending), so we need to:
-  // 1. Reverse pages order (oldest page first)
-  // 2. Reverse messages within each page (oldest message first)
-  const messageBubbles = useMemo(() => {
-    if (!data?.pages || data.pages.length === 0) return null;
-
-    // Reverse pages so oldest page is first, then reverse messages in each page
-    const allMessages = [...data.pages]
-      .reverse()
-      .flatMap((page) => [...page.messages].reverse());
-
-    return allMessages.map((message, index) => {
-      const isSender = activeUser?.waId === message.from;
-      const isReceiver = !isSender;
-      return (
-        <MessageBubble
-          key={message.id + index}
-          message={message}
-          isSender={isSender}
-          isReceiver={isReceiver}
-        />
-      );
-    });
-  }, [data?.pages, activeUser?.waId]);
-
-  // Extracted dependencies for useEffect to satisfy exhaustive-deps
-  const pagesLength = data?.pages?.length;
-  // We need to watch the FIRST page (newest messages) for changes to auto-scroll
-  // Backend returns newest first, so page[0] is the newest.
-  const newestPageMessagesLength = data?.pages?.[0]?.messages?.length;
-
-  // Auto-scroll to bottom on initial load and when new messages arrive
+  // Auto-scroll to bottom on initial load or NEW messages (at the end of the array)
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || allMessages.length === 0) return;
 
-    // If we just loaded more messages, restore scroll position
     if (isLoadingMoreRef.current) {
-      const newScrollHeight = el.scrollHeight;
+      // Message prepended (Load More)
+      const newScrollHeight = rowVirtualizer.getTotalSize();
       const scrollDiff = newScrollHeight - prevScrollHeightRef.current;
       el.scrollTop = scrollDiff;
       isLoadingMoreRef.current = false;
-      return;
+    } else {
+      // Newest message (at end) - auto scroll to bottom
+      rowVirtualizer.scrollToIndex(allMessages.length - 1, { align: "end" });
     }
+  }, [allMessages.length, rowVirtualizer, conversationId]);
 
-    // Otherwise, scroll to bottom (for initial load or new messages)
-    el.scrollTop = el.scrollHeight;
-  }, [conversationId, pagesLength, newestPageMessagesLength]);
-
-  // Handle load more - save scroll height before fetching
   const handleLoadMore = () => {
     if (!scrollRef.current) return;
-    prevScrollHeightRef.current = scrollRef.current.scrollHeight;
+    prevScrollHeightRef.current = rowVirtualizer.getTotalSize();
     isLoadingMoreRef.current = true;
     fetchNextPage();
   };
 
+  // Mark as read logic
   useEffect(() => {
-    if (
-      !conversationId ||
-      !activeUser?.waId ||
-      !data?.pages ||
-      data.pages.length === 0 ||
-      isFetching
-    ) {
-      return;
-    }
+    if (!conversationId || !activeUser?.waId || allMessages.length === 0 || isFetching) return;
 
-    // Check if there are any unread messages for the current user
-    const hasUnreadMessages = data.pages.some((page) =>
-      page.messages.some(
-        (message) => message.to === activeUser.waId && message.status !== "read"
-      )
+    const hasUnread = allMessages.some(
+      (m) => m.to === activeUser.waId && m.status !== "read"
     );
 
-    if (hasUnreadMessages) {
+    if (hasUnread) {
       markConversationAsRead(conversationId);
     }
-  }, [
-    conversationId,
-    activeUser?.waId,
-    data?.pages,
-    isFetching,
-    markConversationAsRead,
-  ]);
+  }, [conversationId, activeUser?.waId, allMessages, isFetching, markConversationAsRead]);
 
   return (
     <div
       ref={scrollRef}
-      className="
-      transition-all
-        h-[80vh] w-full relative flex-grow
-        overflow-y-auto
-        overflow-x-hidden
-        custom-scrollbar
-        
-        flex flex-col
-      "
-      style={{
-        overscrollBehaviorX: "none",
-        WebkitOverflowScrolling: "touch",
-      }}
+      className="h-[80vh] w-full relative flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col"
+      style={{ overscrollBehaviorX: "none", WebkitOverflowScrolling: "touch" }}
     >
-      <div className="bg-[url(/chat-bg.png)] bg-fixed fixed h-full w-full opacity-5 !z-0 pointer-events-none"></div>
+      <div className="bg-gray-400 dark:bg-[url(/chat-bg.png)] bg-fixed fixed h-full w-full opacity-5 !z-0 pointer-events-none"></div>
 
-      {/* Load More Button at the top */}
       <div className="flex items-center justify-center py-2 z-10 top-0">
         <Button
           variant="ghost"
@@ -142,27 +97,45 @@ function ChatContainer({ conversationId }: { conversationId: string }) {
           className="text-sm"
         >
           {isFetchingNextPage ? (
-            <>
-              <span className="mr-2 animate-spin">
-                <PlusCircle size={18} />
-              </span>
-              Loading more...
-            </>
+            <><PlusCircle size={18} className="mr-2 animate-spin" /> Loading...</>
           ) : hasNextPage ? (
-            <>
-              <PlusCircle size={18} className="mr-2" />
-              Load More
-            </>
+            <><PlusCircle size={18} className="mr-2" /> Load More</>
           ) : null}
         </Button>
       </div>
 
-      {/* Message bubbles - oldest at top, newest at bottom */}
-      <div className="flex-1 flex flex-col justify-start w-full gap-1 px-1 sm:px-8 max-w-full relative z-20">
-        {messageBubbles}
+      {/* Virtualized Inner Container */}
+      <div
+        className="w-full relative z-20"
+        style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+      >
+        {rowVirtualizer.getVirtualItems().map((vItem) => {
+          const message = allMessages[vItem.index];
+          const isSender = activeUser?.waId === message.from;
+          return (
+            <div
+              key={vItem.key}
+              ref={rowVirtualizer.measureElement}
+              data-index={vItem.index}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${vItem.start}px)`,
+              }}
+              className="px-1 sm:px-6"
+            >
+              <MessageBubble
+                message={message}
+                isSender={isSender}
+                isReceiver={!isSender}
+              />
+            </div>
+          );
+        })}
       </div>
 
-      {/* Loader for isFetching */}
       {isFetching && <MessageLoader />}
     </div>
   );

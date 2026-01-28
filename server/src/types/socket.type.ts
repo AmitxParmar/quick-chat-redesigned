@@ -22,6 +22,10 @@ export enum SocketEvents {
     // Room events
     JOIN_ROOM = 'room:join',
     LEAVE_ROOM = 'room:leave',
+
+    // Message events
+    MESSAGE_SEND = 'message:send',
+    MESSAGE_CREATED = 'message:created',
 }
 
 export interface TaskEventPayload {

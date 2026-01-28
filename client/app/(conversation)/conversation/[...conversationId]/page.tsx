@@ -5,17 +5,13 @@ const Conversation = async ({
 }: {
   params: Promise<{ conversationId: string[] }>;
 }) => {
-  // conversationId is an array: [conversationId, activeChatUserId]
-  const { conversationId } = await params;
-
-  const currentConversationId = conversationId?.[0] || "";
-  const activeChatUserId = conversationId?.[1] || "";
+  // Ensure params are awaited even if we don't use them directly here, 
+  // though strictly speaking we don't need to read them if the child hook reads them.
+  // But good to keep the await for Nextjs behavior consistency.
+  await params;
 
   return (
-    <Chat
-      conversationId={currentConversationId}
-      activeChatUserId={activeChatUserId}
-    />
+    <Chat />
   );
 };
 

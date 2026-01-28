@@ -15,15 +15,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "../ui/button";
 import { useTheme } from "next-themes";
-import { useUserStore } from "@/store/useUserStore";
+import { useUIStore } from "@/store/ui-store";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { useLogout } from "@/hooks/useAuth";
-import AccountSwitcher from "../common/account-switcher";
+import dynamic from "next/dynamic";
+const AccountSwitcher = dynamic(() => import("../common/account-switcher"), {
+  ssr: false,
+});
 
 const ContactHeader = () => {
   const { theme, setTheme } = useTheme();
-  const { toggleContactList } = useUserStore((state) => state);
+  const toggleContactList = useUIStore((state) => state.toggleContactList);
   const router = useRouter();
   const logoutMutation = useLogout();
 
