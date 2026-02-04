@@ -16,6 +16,7 @@ const getSocket = () => socketService.getSocket();
 
 export function useMessages(conversationId: string) {
   const [limit, setLimit] = useState(50);
+  const { user } = useAuth(); // Get user from auth hook
 
   // Use Dexie live query to observe messages
   const messages = useLiveQuery(
@@ -55,22 +56,17 @@ export function useMessages(conversationId: string) {
 
     if (unreadMessages.length > 0) {
       // Update local status immediately
+      const socket = getSocket();
       unreadMessages.forEach(msg => {
         messageDexieService.updateMessageStatus(msg.id, 'read');
       });
 
-      // Notify server (you might want to batch this or use a specific event)
-      // Assuming there is an API or Socket event for this. 
-      // For now, let's assume we need to implement a socket emitter for "read" or use the existing REST API via mutation in previous code.
-      // Re-using the logic from useConversations which used mutation.
-      // But since we are full socket now:
-      // Let's defer this to a specific task or assume server handles it? 
-      // The user said "read indicators arent displaying". This implies they expect them to update.
-      // We need to tell the server we read them.
-
-      // TODO: Emit 'messages:read' event or similar if server supports it via socket 
-      // OR use the REST API 'markAsRead' which triggers socket event.
-      // Let's check conversation service... it uses REST.
+      // Notify server that we read these messages
+      socket.emit(SocketEvents.MESSAGES_MARKED_AS_READ, {
+        conversationId,
+        waId: user.waId,
+        updatedMessages: unreadMessages.length
+      });
     }
   }, [conversationId, messages, user?.waId]);
 

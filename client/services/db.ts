@@ -9,6 +9,11 @@ export class QuickChatDB extends Dexie {
         this.version(1).stores({
             messages: 'id, conversationId, timestamp', // Primary key: id, Indexes: conversationId, timestamp
         });
+
+        // Version 2: Add compound index for efficient sorting by timestamp within a conversation
+        this.version(2).stores({
+            messages: 'id, conversationId, timestamp, [conversationId+timestamp]',
+        });
     }
 }
 

@@ -248,6 +248,50 @@ class SocketService {
             this.emitMessageCreated(conversationId, { message, conversationId }, participants);
         });
 
+        // Handle messages marked as read
+        socket.on(SocketEvents.MESSAGES_MARKED_AS_READ, (payload: { conversationId: string, waId: string, updatedMessages: number }) => {
+            const { conversationId, waId } = payload;
+            if (!conversationId || !waId) return;
+
+            // Broadcast status update to the conversation
+            // In a real persistence scenario, we would update DB here.
+            // Since messages are local, we just tell others "User X read messages in this conversation"
+            // But 'emitMessageStatusUpdated' usually requires a specific message ID.
+            // If we want to mark ALL as read, we might need a different event or loop.
+            // However, typical behavior is: User A reads conversation. User B sees double blue ticks on HIS messages to User A.
+
+            // For now, let's emit a specific event that clients can use to update ALL messages from themselves in that conversation to 'read'
+            // OR Reuse 'message:status-updated' but we don't have message IDs here (updatedMessages is just a count).
+
+            // Re-broadcast the SAME event so clients can handle "Mark all my msg to this user as read"
+            // Or better: The client sent 'MESSAGES_MARKED_AS_READ'.
+            // Let's broadcast this to the room.
+
+            socket.to(conversationId).emit(SocketEvents.MESSAGES_MARKED_AS_READ, {
+                conversationId,
+                readBy: waId,
+                timestamp: Date.now()
+            });
+
+            logger.info(`User ${waId} marked messages as read in ${conversationId}`);
+        });
+
+        // Handle message status updates (Delivered/Read) from client
+        socket.on(SocketEvents.MESSAGE_STATUS_UPDATED, (payload: { id: string; status: string; conversationId: string; updatedBy: string }) => {
+            const { id, status, conversationId } = payload;
+            if (!id || !status || !conversationId) return;
+
+            // Relay to conversation
+            socket.to(conversationId).emit(SocketEvents.MESSAGE_STATUS_UPDATED, {
+                id,
+                status,
+                conversationId,
+                updatedBy: payload.updatedBy
+            });
+
+            logger.info(`Relayed message status ${status} for ${id}`);
+        });
+
         // Set initial online status
         if (userWaId) {
             cacheService.setUserOnline(userWaId, true);

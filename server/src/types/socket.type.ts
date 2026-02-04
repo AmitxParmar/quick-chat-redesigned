@@ -25,9 +25,11 @@ export enum SocketEvents {
 
     // Message events
     MESSAGE_SEND = 'message:send',
-    MESSAGE_CREATED = 'message:created',
+    MESSAGE_STATUS_UPDATED = 'message:status-updated',
+    MESSAGES_MARKED_AS_READ = 'messages:marked-as-read',
 }
 
+// Conversation events
 export interface TaskEventPayload {
     taskId: string;
     task?: unknown;

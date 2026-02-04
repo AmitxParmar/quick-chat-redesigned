@@ -5,6 +5,7 @@ import { socketService } from "@/services/socket.service";
 import { SocketEvents } from "@/types/socket-events";
 import { messageDexieService } from "@/services/message.dexie.service";
 import useAuth from "@/hooks/useAuth";
+import { Message } from "@/types";
 
 export default function GlobalSocketListener() {
     const { user } = useAuth();
@@ -16,10 +17,21 @@ export default function GlobalSocketListener() {
         const socket = socketService.getSocket();
 
         // Listener for incoming messages
-        const onMessageCreated = (payload: { message: any; conversationId: string }) => {
+        const onMessageCreated = (payload: { message: Message; conversationId: string }) => {
             console.log("[GlobalSocketListener] Received message:", payload?.message?.id);
             if (payload?.message) {
-                messageDexieService.addMessage(payload.message).catch((err) => {
+                messageDexieService.addMessage(payload.message).then(() => {
+                    // Ack delivery
+                    // Only ack if it wasn't sent by me (though relay shouldn't send back to me realistically, but safety check)
+                    if (payload.message.from !== user?.waId) {
+                        socket.emit(SocketEvents.MESSAGE_STATUS_UPDATED, {
+                            id: payload.message.id,
+                            status: 'delivered',
+                            conversationId: payload.conversationId,
+                            updatedBy: user?.waId
+                        });
+                    }
+                }).catch((err) => {
                     console.error("[GlobalSocketListener] Failed to save message to Dexie:", err);
                 });
             }
@@ -37,9 +49,42 @@ export default function GlobalSocketListener() {
 
         socket.on(SocketEvents.MESSAGE_STATUS_UPDATED, onStatusUpdated);
 
+        // Listener for bulk read receipt
+        const onMessagesRead = (payload: { conversationId: string; readBy: string }) => {
+            console.log("[GlobalSocketListener] Messages read by:", payload.readBy);
+            if (payload?.conversationId && payload?.readBy) {
+                messageDexieService.markMessagesAsRead(payload.conversationId, payload.readBy).catch(console.error);
+            }
+        };
+
+        socket.on(SocketEvents.MESSAGES_MARKED_AS_READ, onMessagesRead);
+
+        // Listener for User Online -> Resend pending messages
+        const onUserOnline = ({ waId }: { waId: string }) => {
+            console.log("[GlobalSocketListener] User online:", waId);
+            if (!waId) return;
+
+            messageDexieService.getPendingMessages(waId).then((pendingMessages) => {
+                if (pendingMessages.length > 0) {
+                    console.log(`[GlobalSocketListener] Resending ${pendingMessages.length} pending messages to ${waId}`);
+                    pendingMessages.forEach(msg => {
+                        // Re-emit message:send
+                        socket.emit(SocketEvents.MESSAGE_SEND, {
+                            message: msg,
+                            conversationId: msg.conversationId
+                        });
+                    });
+                }
+            }).catch(console.error);
+        };
+
+        socket.on(SocketEvents.USER_ONLINE, onUserOnline);
+
         return () => {
             socket.off(SocketEvents.MESSAGE_CREATED, onMessageCreated);
             socket.off(SocketEvents.MESSAGE_STATUS_UPDATED, onStatusUpdated);
+            socket.off(SocketEvents.MESSAGES_MARKED_AS_READ, onMessagesRead);
+            socket.off(SocketEvents.USER_ONLINE, onUserOnline);
         };
     }, [user?.waId]);
 
