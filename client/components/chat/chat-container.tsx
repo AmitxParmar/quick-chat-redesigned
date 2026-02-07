@@ -18,22 +18,20 @@ import { useChatParams } from "@/hooks/use-chat-params";
  */
 function ChatContainer() {
   const { conversationId } = useChatParams();
-  const { data, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { messages: allMessages, isLoading, fetchNextPage, hasNextPage } =
     useMessages(conversationId);
   const { user: activeUser } = useAuth();
   const { markConversationAsRead } = useAutoMarkAsRead();
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Flatten messages for the virtualizer
-  const allMessages = useMemo(() => {
-    if (!data?.pages) return [];
-    return data.pages.flatMap((page) => page.messages);
-  }, [data?.pages]);
+  // Memoized for virtualizer (though now it's just the direct array)
+  // kept for consistency if we add processing later
+  const messagesList = useMemo(() => allMessages || [], [allMessages]);
 
   // Setup Virtualizer
   const rowVirtualizer = useVirtualizer({
-    count: allMessages.length,
+    count: messagesList.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: useCallback(() => 80, []), // Estimates based on typical bubble heights
     overscan: 10,
@@ -47,7 +45,7 @@ function ChatContainer() {
   // Auto-scroll to bottom on initial load or NEW messages (at the end of the array)
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || allMessages.length === 0) return;
+    if (!el || messagesList.length === 0) return;
 
     if (isLoadingMoreRef.current) {
       // Message prepended (Load More)
@@ -57,9 +55,9 @@ function ChatContainer() {
       isLoadingMoreRef.current = false;
     } else {
       // Newest message (at end) - auto scroll to bottom
-      rowVirtualizer.scrollToIndex(allMessages.length - 1, { align: "end" });
+      rowVirtualizer.scrollToIndex(messagesList.length - 1, { align: "end" });
     }
-  }, [allMessages.length, rowVirtualizer, conversationId]);
+  }, [messagesList.length, rowVirtualizer, conversationId]);
 
   const handleLoadMore = () => {
     if (!scrollRef.current) return;
@@ -70,16 +68,16 @@ function ChatContainer() {
 
   // Mark as read logic
   useEffect(() => {
-    if (!conversationId || !activeUser?.waId || allMessages.length === 0 || isFetching) return;
+    if (!conversationId || !activeUser?.waId || messagesList.length === 0 || isLoading) return;
 
-    const hasUnread = allMessages.some(
+    const hasUnread = messagesList.some(
       (m) => m.to === activeUser.waId && m.status !== "read"
     );
 
     if (hasUnread) {
       markConversationAsRead(conversationId);
     }
-  }, [conversationId, activeUser?.waId, allMessages, isFetching, markConversationAsRead]);
+  }, [conversationId, activeUser?.waId, messagesList, isLoading, markConversationAsRead]);
 
   return (
     <div
@@ -93,10 +91,10 @@ function ChatContainer() {
         <Button
           variant="ghost"
           onClick={handleLoadMore}
-          disabled={!hasNextPage || isFetchingNextPage}
+          disabled={!hasNextPage || isLoading}
           className="text-sm"
         >
-          {isFetchingNextPage ? (
+          {isLoading && isLoadingMoreRef.current ? (
             <><PlusCircle size={18} className="mr-2 animate-spin" /> Loading...</>
           ) : hasNextPage ? (
             <><PlusCircle size={18} className="mr-2" /> Load More</>
@@ -136,7 +134,7 @@ function ChatContainer() {
         })}
       </div>
 
-      {isFetching && <MessageLoader />}
+      {isLoading && <MessageLoader />}
     </div>
   );
 }

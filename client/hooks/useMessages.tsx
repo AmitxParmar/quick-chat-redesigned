@@ -70,33 +70,16 @@ export function useMessages(conversationId: string) {
     }
   }, [conversationId, messages, user?.waId]);
 
-  // Compatibility structure for ChatContainer (which expects InfiniteData)
-  const data = {
-    pages: [
-      {
-        messages: messages || [],
-        pagination: {
-          currentPage: 1,
-          totalPages: 1,
-          totalMessages: totalMessages || 0,
-          hasMore: (messages?.length || 0) < (totalMessages || 0),
-        },
-      },
-    ],
-    pageParams: [1],
-  };
-
+  // Return flat messages array directly
   const fetchNextPage = () => {
     setLimit((prev) => prev + 50);
   };
 
   return {
-    data,
+    messages: messages || [],
     isLoading: !messages,
-    isFetching: !messages,
     fetchNextPage,
     hasNextPage: (messages?.length || 0) < (totalMessages || 0),
-    isFetchingNextPage: false,
   };
 }
 
