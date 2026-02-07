@@ -7,6 +7,11 @@ import {
   searchUsers,
 } from "@/services/contacts.service";
 
+/**
+ * Custom hook to fetch the current authenticated user's contact list.
+ * 
+ * @returns The query result containing the user's contacts.
+ */
 export const useContacts = () => {
   const { user } = useAuth();
   return useQuery({
@@ -18,6 +23,12 @@ export const useContacts = () => {
   });
 };
 
+/**
+ * Custom hook to handle adding a new contact.
+ * Automatically invalidates the 'contacts' query and shows a success toast on completion.
+ * 
+ * @returns The mutation object for adding a contact.
+ */
 export const useAddContact = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -29,6 +40,13 @@ export const useAddContact = () => {
   });
 };
 
+/**
+ * Custom hook to search for users based on a search string.
+ * 
+ * @param query - The search term used to filter users.
+ * @param enabled - Optional flag to enable or disable the query (defaults to true).
+ * @returns The query result containing the found users.
+ */
 export const useSearchUsers = (query: string, enabled: boolean = true) => {
   return useQuery({
     queryKey: ["search-users", query],

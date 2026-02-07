@@ -2,7 +2,6 @@ import {
   IAddMessageRequest,
 } from "@/services/message.service";
 import { Message } from "@/types";
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useCallback } from "react";
 import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
@@ -11,9 +10,20 @@ import { messageDexieService } from "@/services/message.dexie.service";
 import { v4 as uuidv4 } from "uuid";
 import useAuth from "./useAuth";
 
+/**
+ * Retrieves the current socket instance from the socket service.
+ * @returns The socket instance.
+ */
 // Global socket (via service)
 const getSocket = () => socketService.getSocket();
 
+/**
+ * Hook to manage and observe messages for a specific conversation.
+ * Uses Dexie for local persistence and real-time updates via sockets.
+ * 
+ * @param conversationId - The ID of the conversation to fetch messages for.
+ * @returns An object containing messages, loading state, and pagination controls.
+ */
 export function useMessages(conversationId: string) {
   const [limit, setLimit] = useState(50);
   const { user } = useAuth(); // Get user from auth hook
@@ -83,9 +93,23 @@ export function useMessages(conversationId: string) {
   };
 }
 
+/**
+ * Hook to provide a function for sending messages.
+ * Handles local storage in Dexie and real-time emission via sockets.
+ * 
+ * @returns An object containing the mutate function to send messages.
+ */
 export function useSendMessage() {
   const { user } = useAuth();
 
+  /**
+   * Sends a message to a recipient.
+   * 
+   * @param data - The message data to be sent.
+   * @param options - Optional callbacks for success and error handling.
+   * @param options.onSuccess - Callback triggered on successful message send.
+   * @param options.onError - Callback triggered on message send failure.
+   */
   const sendMessage = useCallback(async (data: IAddMessageRequest, options?: { onSuccess?: () => void; onError?: (err: any) => void }) => {
     try {
       if (!user?.waId) throw new Error("User not authenticated");
@@ -133,4 +157,3 @@ export function useSendMessage() {
 
   return { mutate: sendMessage };
 }
-
