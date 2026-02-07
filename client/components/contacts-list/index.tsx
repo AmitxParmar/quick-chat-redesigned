@@ -5,7 +5,7 @@ import { ArrowLeft, SearchIcon, Plus } from "lucide-react";
 import React, { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useContacts, useAddContact } from "@/hooks/useContacts";
+import { useContacts } from "@/hooks/useContacts";
 import { Dialog, DialogTrigger } from "@/components/ui/dialog";
 import { useGetConversationId } from "@/hooks/useConversations";
 
