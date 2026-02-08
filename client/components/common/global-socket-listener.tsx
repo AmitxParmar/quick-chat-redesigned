@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { socketService } from "@/services/socket.service";
+import { logout as logoutApi } from "@/services/auth.service";
 import { SocketEvents } from "@/types/socket-events";
 import { messageDexieService } from "@/services/message.dexie.service";
 import useAuth from "@/hooks/useAuth";
@@ -81,13 +82,22 @@ export default function GlobalSocketListener() {
         socket.on(SocketEvents.USER_ONLINE, onUserOnline);
 
         // Single-device login: Handle forced logout when user logs in from another device
-        const onForcedLogout = (payload: { reason: string; message: string }) => {
+        const onForcedLogout = async (payload: { reason: string; message: string }) => {
             console.warn("[GlobalSocketListener] Forced logout:", payload.message);
-            // Clear local data and redirect to login
+            // Clear local data and cookies, then redirect to login
             if (typeof window !== "undefined") {
-                // Show alert before redirect
+                // Show alert
                 alert(payload.message || "You have been logged out because your account was accessed from another device.");
-                window.location.href = "/login";
+
+                // Call logout API to clear cookies
+                try {
+                    await logoutApi();
+                } catch (e) {
+                    console.error("[GlobalSocketListener] Failed to call logout API:", e);
+                }
+
+                // Redirect to login
+                window.location.replace("/login");
             }
         };
 
