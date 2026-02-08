@@ -8,7 +8,7 @@ function MessageStatus({
 }) {
   return (
     <>
-      {messageStatus === "pending" && <Clock className="p-0.5" size={14} />}
+      {messageStatus === "pending" && <Clock className="p-0.5 text-muted-foreground" size={16} />}
       {messageStatus === "sent" && <Check className="p-0.5" />}
       {messageStatus === "delivered" && <CheckCheck className="p-0.5" />}
       {messageStatus === "read" && (

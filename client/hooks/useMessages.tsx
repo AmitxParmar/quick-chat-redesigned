@@ -2,10 +2,11 @@ import {
   IAddMessageRequest,
 } from "@/services/message.service";
 import { Message } from "@/types";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
 import { useLiveQuery } from "dexie-react-hooks";
+import { liveQuery } from "dexie";
 import { messageDexieService } from "@/services/message.dexie.service";
 import { v4 as uuidv4 } from "uuid";
 import useAuth from "./useAuth";
@@ -25,41 +26,125 @@ const getSocket = () => socketService.getSocket();
  * @returns An object containing messages, loading state, and pagination controls.
  */
 export function useMessages(conversationId: string) {
-  const [limit, setLimit] = useState(50);
-  const { user } = useAuth(); // Get user from auth hook
+  const [pageSize] = useState(50);
+  const { user } = useAuth();
 
-  // Use Dexie live query to observe messages
-  const messages = useLiveQuery(
-    () => messageDexieService.getMessages(conversationId, limit),
-    [conversationId, limit]
-  );
+  // --- Infinite Scroll Logic (Page-based LiveQuery) ---
 
-  const totalMessages = useLiveQuery(
-    () => messageDexieService.getMessageCount(conversationId),
-    [conversationId]
-  );
+  // Create a liveQuery observable for a specific page
+  const createLiveQuery = useCallback((pageNo: number) => liveQuery(
+    () => messageDexieService.getMessages(conversationId, pageSize, pageNo * pageSize)
+  ), [conversationId, pageSize]);
 
-  // Listen for real-time messages and save to Dexie
+  // Current ongoing queries (one per "page")
+  // Initialize with the first page (offset 0)
+  const [liveQueries, setLiveQueries] = useState(() => [createLiveQuery(0)]);
+
+  // Current set of result sets (one result set per page)
+  const [resultArrays, setResultArrays] = useState<Message[][]>([]);
+
+  // Subscribe to all liveQueries
   useEffect(() => {
-    if (!conversationId) return;
-    const socket = getSocket();
+    // metadata tracking to avoid state updates if component unmounts
+    let isMounted = true;
 
-    // GlobalSocketListener handles saving incoming messages to Dexie
-    // usageMessages just observes Dexie via useLiveQuery
+    const subscriptions = liveQueries.map((q, i) => q.subscribe(
+      (results: Message[]) => {
+        if (!isMounted) return;
+        setResultArrays(prev => {
+          const newArrays = [...prev];
+          newArrays[i] = results;
+          return newArrays;
+        });
+      },
+      (error: any) => console.error(`Error in liveQuery page ${i}:`, error)
+    ));
+
+    return () => {
+      isMounted = false;
+      subscriptions.forEach(s => s.unsubscribe());
+    };
+  }, [liveQueries]); // limiting dependencies to avoid re-subscription loops
+
+  // Re-initialize when conversationId changes
+  useEffect(() => {
+    setLiveQueries([createLiveQuery(0)]);
+    setResultArrays([]);
+  }, [conversationId, createLiveQuery]);
+
+  const fetchNextPage = useCallback(() => {
+    const nextPageNo = liveQueries.length;
+    setLiveQueries(prev => [...prev, createLiveQuery(nextPageNo)]);
+  }, [liveQueries.length, createLiveQuery]);
+
+  // Flatten results for UI
+  // Note: resultArrays are [Page0(Newest), Page1(Older), ...]
+  // But inside each page, messages are Oldest->Newest (from service)
+  // We want to display them chronologically: PageN...Page1...Page0
+  // So we reverse the pages order, then flat map?
+  // Wait, service returns: `messages.reverse()` (Oldest->Newest).
+  // Example: 
+  // Page 0 (Offset 0-50 newest): [Msg45..Msg50]
+  // Page 1 (Offset 50-100 older): [Msg0..Msg5]
+  // We want [Msg0..Msg5, ..., Msg45..Msg50]
+  // So we need to reverse the PAGE order (Page 1 then Page 0) before flattening?
+  // Yes: [...resultArrays].reverse().flat() should give [Oldest...Newest]
+  const messages = useMemo(() => {
+    // copying to avoid mutating state array
+    return [...resultArrays].reverse().flat();
+  }, [resultArrays]);
+
+  const totalLoaded = messages.length;
+  // If the last page (highest offset) returns fewer items than pageSize, we reached the end
+  const hasNextPage = resultArrays.length > 0 && resultArrays[resultArrays.length - 1]?.length === pageSize;
+
+
+  // --- Real-time & Socket Logic ---
+
+  // Listen for real-time connection and messages
+  useEffect(() => {
+    if (!conversationId || !user?.waId) return;
+    const socket = getSocket();
 
     socket.emit(SocketEvents.CONVERSATION_JOIN, conversationId);
 
-    return () => {
-      // socket.off(SocketEvents.MESSAGE_CREATED, onMessageCreated);
+    const onConnect = () => {
+      console.log("Socket connected, checking for pending messages...");
+      retryPendingMessages();
     };
-  }, [conversationId]);
 
+    socket.on("connect", onConnect);
 
-  // Mark messages as read when they are loaded and we are looking at them
+    // Initial check in case we are already connected or just loaded
+    if (socket.connected) {
+      retryPendingMessages();
+    }
+
+    // Also listen to online status of browser
+    const onOnline = () => retryPendingMessages();
+    window.addEventListener('online', onOnline);
+
+    return () => {
+      socket.off("connect", onConnect);
+      window.removeEventListener('online', onOnline);
+    };
+
+    async function retryPendingMessages() {
+      const pending = await messageDexieService.getPendingMessages(conversationId);
+      if (pending.length > 0) {
+        console.log(`Resending ${pending.length} pending messages...`);
+        pending.forEach(msg => {
+          // Re-emit message:send
+          socket.emit(SocketEvents.MESSAGE_SEND, msg);
+        });
+      }
+    }
+  }, [conversationId, user?.waId]);
+
+  // Mark as read logic (kept similar to before)
   useEffect(() => {
     if (!conversationId || !messages || messages.length === 0 || !user?.waId) return;
 
-    // Find unread messages from other users
     const unreadMessages = messages.filter(
       m => m.to === user.waId && m.status !== 'read'
     );
@@ -71,7 +156,6 @@ export function useMessages(conversationId: string) {
         messageDexieService.updateMessageStatus(msg.id, 'read');
       });
 
-      // Notify server that we read these messages
       socket.emit(SocketEvents.MESSAGES_MARKED_AS_READ, {
         conversationId,
         waId: user.waId,
@@ -80,16 +164,11 @@ export function useMessages(conversationId: string) {
     }
   }, [conversationId, messages, user?.waId]);
 
-  // Return flat messages array directly
-  const fetchNextPage = () => {
-    setLimit((prev) => prev + 50);
-  };
-
   return {
-    messages: messages || [],
-    isLoading: !messages,
+    messages,
+    isLoading: resultArrays.length === 0 && liveQueries.length > 0 && messages.length === 0, // Initial loading
     fetchNextPage,
-    hasNextPage: (messages?.length || 0) < (totalMessages || 0),
+    hasNextPage,
   };
 }
 

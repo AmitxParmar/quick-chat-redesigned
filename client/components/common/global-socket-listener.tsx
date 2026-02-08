@@ -80,11 +80,25 @@ export default function GlobalSocketListener() {
 
         socket.on(SocketEvents.USER_ONLINE, onUserOnline);
 
+        // Single-device login: Handle forced logout when user logs in from another device
+        const onForcedLogout = (payload: { reason: string; message: string }) => {
+            console.warn("[GlobalSocketListener] Forced logout:", payload.message);
+            // Clear local data and redirect to login
+            if (typeof window !== "undefined") {
+                // Show alert before redirect
+                alert(payload.message || "You have been logged out because your account was accessed from another device.");
+                window.location.href = "/login";
+            }
+        };
+
+        socket.on(SocketEvents.AUTH_FORCED_LOGOUT, onForcedLogout);
+
         return () => {
             socket.off(SocketEvents.MESSAGE_CREATED, onMessageCreated);
             socket.off(SocketEvents.MESSAGE_STATUS_UPDATED, onStatusUpdated);
             socket.off(SocketEvents.MESSAGES_MARKED_AS_READ, onMessagesRead);
             socket.off(SocketEvents.USER_ONLINE, onUserOnline);
+            socket.off(SocketEvents.AUTH_FORCED_LOGOUT, onForcedLogout);
         };
     }, [user?.waId]);
 

@@ -19,14 +19,12 @@ class MessageDexieService {
     /**
      * Get messages for a conversation
      */
-    async getMessages(conversationId: string, limit = 50) {
-        // Query indexing: [conversationId+timestamp]
-        // Efficiently get range of messages for conversation, sorted by timestamp
-        // We fetch the 'limit' newest messages.
+    async getMessages(conversationId: string, limit = 50, offset = 0) {
         const messages = await db.messages
             .where('[conversationId+timestamp]')
             .between([conversationId, -Infinity], [conversationId, Infinity])
             .reverse() // Start from newest (largest timestamp)
+            .offset(offset)
             .limit(limit)
             .toArray();
 

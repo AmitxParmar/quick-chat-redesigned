@@ -1,4 +1,7 @@
 export enum SocketEvents {
+    // Auth events
+    AUTH_FORCED_LOGOUT = "auth:forced-logout",
+
     // User events
     USER_GET_STATUS = "user:get-status",
     USER_STATUS = "user:status",

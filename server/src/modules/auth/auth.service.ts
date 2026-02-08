@@ -67,10 +67,11 @@ export default class AuthService {
     const accessToken = jwtService.generateAccessToken({ userId: user.id });
     const refreshToken = jwtService.generateRefreshToken({ userId: user.id });
 
-    // Store Refresh Token in Redis (Key: auth:refresh_token:<token_uuid>)
-    // Value: UserId
-    // We use the token itself as key, or a hash of it. Since tokens are long, let's store it as is for simplicity in this demo.
-    await redis.set(`auth:refresh_token:${refreshToken}`, user.id, { ex: REFRESH_TOKEN_TTL });
+    // Single-device login: Delete any existing session for this user
+    await redis.del(`auth:session:${user.id}`);
+
+    // Store new session (Key: auth:session:{userId}, Value: refreshToken)
+    await redis.set(`auth:session:${user.id}`, refreshToken, { ex: REFRESH_TOKEN_TTL });
 
     // Update user online status
     await authRepository.updateUser(user.id, {
@@ -115,8 +116,15 @@ export default class AuthService {
     const accessToken = jwtService.generateAccessToken({ userId: user.id });
     const refreshToken = jwtService.generateRefreshToken({ userId: user.id });
 
-    // Store Refresh Token in Redis
-    await redis.set(`auth:refresh_token:${refreshToken}`, user.id, { ex: REFRESH_TOKEN_TTL });
+    // Single-device login: Delete any existing session (logs out other devices)
+    const existingToken = await redis.get<string>(`auth:session:${user.id}`);
+    if (existingToken) {
+      await redis.del(`auth:session:${user.id}`);
+      // Note: Socket notification for forced logout will be handled by the controller
+    }
+
+    // Store new session
+    await redis.set(`auth:session:${user.id}`, refreshToken, { ex: REFRESH_TOKEN_TTL });
 
     // Update user status
     await authRepository.updateUser(user.id, {
@@ -137,12 +145,11 @@ export default class AuthService {
   /**
    * Logout user
    */
-  public async logout(userId: string, refreshToken?: string): Promise<void> {
+  public async logout(userId: string, _refreshToken?: string): Promise<void> {
     logger.info(`User logout: ${userId}`);
 
-    if (refreshToken) {
-      await redis.del(`auth:refresh_token:${refreshToken}`);
-    }
+    // Delete user session (single key per user now)
+    await redis.del(`auth:session:${userId}`);
 
     await authRepository.updateUser(userId, {
       isOnline: false,
@@ -171,12 +178,12 @@ export default class AuthService {
       throw new HttpUnAuthorizedError('Invalid refresh token', 'REFRESH_TOKEN_INVALID');
     }
 
-    // 2. Stateful Check in Redis
-    const userId = await redis.get<string>(`auth:refresh_token:${refreshToken}`);
+    // 2. Stateful Check in Redis (single session per user)
+    const storedToken = await redis.get<string>(`auth:session:${result.payload.userId}`);
 
-    if (!userId || userId !== result.payload.userId) {
-      // Token not found in Redis (Revoked or Expired in Redis but valid signature)
-      throw new HttpUnAuthorizedError('Invalid or revoked refresh token', 'REFRESH_TOKEN_REVOKED');
+    if (!storedToken || storedToken !== refreshToken) {
+      // Token doesn't match stored session (revoked or logged in elsewhere)
+      throw new HttpUnAuthorizedError('Session expired or logged in from another device', 'REFRESH_TOKEN_REVOKED');
     }
 
     const payload = result.payload;
@@ -189,15 +196,12 @@ export default class AuthService {
 
     // Match checks out. Rotate tokens.
 
-    // Delete old token
-    await redis.del(`auth:refresh_token:${refreshToken}`);
-
     // Generate new tokens
     const newAccessToken = jwtService.generateAccessToken({ userId: user.id });
     const newRefreshToken = jwtService.generateRefreshToken({ userId: user.id });
 
-    // Store new token
-    await redis.set(`auth:refresh_token:${newRefreshToken}`, user.id, { ex: REFRESH_TOKEN_TTL });
+    // Update session with new token (same key, just new value)
+    await redis.set(`auth:session:${user.id}`, newRefreshToken, { ex: REFRESH_TOKEN_TTL });
 
     // No longer updating DB for refreshToken
     // await authRepository.updateUser...

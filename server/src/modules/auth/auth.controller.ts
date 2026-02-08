@@ -4,6 +4,7 @@ import { type CustomResponse } from '@/types/common.type';
 import { type AuthRequest } from '@/types/auth.type';
 import Api from '@/lib/api';
 import { cookieService } from '@/utils/cookies';
+import socketService from '@/lib/socket';
 import AuthService from './auth.service';
 import { User } from '@prisma/client';
 
@@ -50,6 +51,9 @@ export default class AuthController extends Api {
   ) => {
     try {
       const result = await this.authService.login(req.body);
+
+      // Single-device login: Notify any existing sessions to logout
+      socketService.emitForcedLogout(result.user.id);
 
       // Set cookies
       cookieService.setTokenCookies(res, result.tokens.accessToken, result.tokens.refreshToken);

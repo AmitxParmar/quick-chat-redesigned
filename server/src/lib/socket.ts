@@ -46,6 +46,12 @@ class SocketService {
             httpCompression: false
         });
 
+        // Optimization: Discard the initial HTTP request reference to save memory
+        // This is safe since we don't rely on it (e.g. for express-session) past handshake
+        /*    this.io.engine.on("connection", (rawSocket: any) => {
+               rawSocket.request = null;
+           }); */
+
         // Setup Redis adapter for horizontal scaling (if REDIS_URL is configured)
         await this.setupRedisAdapter();
 
@@ -466,6 +472,20 @@ class SocketService {
         } else {
             logger.warn(`emitConversationDeleted called without participants for ${conversationId}`);
         }
+    }
+
+    /**
+     * Emits a forced logout event to a specific user (single-device login)
+     * Called when user logs in from a new device
+     */
+    public emitForcedLogout(userId: string): void {
+        if (!this.io) return;
+        this.io.to(`user:${userId}`).emit('auth:forced-logout', {
+            reason: 'logged_in_elsewhere',
+            message: 'You have been logged out because your account was accessed from another device.',
+            timestamp: Date.now()
+        });
+        logger.info(`Emitted forced logout to user ${userId}`);
     }
 }
 
