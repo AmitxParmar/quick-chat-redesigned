@@ -50,6 +50,80 @@ export type Message = {
   updatedAt: string | Date;
 };
 
+// ============================================
+// Queue System Types
+// ============================================
+
+/**
+ * Queue metadata for message retry and state tracking
+ */
+export interface QueueMetadata {
+  /** Current retry attempt count (0-5) */
+  retryCount: number;
+  /** Unix timestamp of last send attempt */
+  lastAttemptTimestamp: number;
+  /** Unix timestamp when message was first queued */
+  enqueuedAt: number;
+  /** Last error message if any */
+  error?: string;
+  /** Type of error encountered */
+  errorType?: 'network' | 'server' | 'timeout' | 'unknown';
+}
+
+/**
+ * Extended Message type with queue metadata
+ */
+export interface MessageWithQueue extends Message {
+  /** Queue metadata for pending/failed messages */
+  queueMetadata?: QueueMetadata;
+}
+
+/**
+ * Current state of the message queue
+ */
+export interface QueueState {
+  /** Total messages in queue */
+  queueSize: number;
+  /** Messages currently being processed */
+  activeCount: number;
+  /** Messages that have failed */
+  errorCount: number;
+  /** Detailed pending messages */
+  pendingMessages: Array<{
+    messageId: string;
+    retryCount: number;
+    lastAttemptTimestamp: number;
+    error?: string;
+    status: 'pending' | 'sending' | 'sent' | 'failed';
+  }>;
+  /** Whether network is online */
+  isOnline: boolean;
+  /** Whether queue is paused */
+  isPaused: boolean;
+}
+
+/**
+ * Configuration for message queue
+ */
+export interface QueueConfig {
+  /** Maximum retry attempts (default: 5) */
+  maxRetries: number;
+  /** Base wait time in ms (default: 1000) */
+  baseWaitMs: number;
+  /** Maximum wait time in ms (default: 30000) */
+  maxWaitMs: number;
+  /** Jitter percentage (default: 0.3 for 30%) */
+  jitter: number;
+  /** Concurrent message processing limit (default: 3) */
+  concurrency: number;
+  /** Minimum concurrency when network is poor (default: 1) */
+  minConcurrency: number;
+  /** Send timeout in ms (default: 10000) */
+  sendTimeoutMs: number;
+  /** Whether to persist queue state (default: true) */
+  persistQueueState: boolean;
+}
+
 // Contact type based on the provided array of objects
 export type Contact = {
   id: string;

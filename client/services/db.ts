@@ -14,6 +14,22 @@ export class QuickChatDB extends Dexie {
         this.version(2).stores({
             messages: 'id, conversationId, timestamp, [conversationId+timestamp]',
         });
+
+        // Version 3: Add status index for queue management
+        this.version(3).stores({
+            messages: 'id, conversationId, timestamp, [conversationId+timestamp], status',
+        }).upgrade(tx => {
+            // Migration: Add queue metadata to existing pending messages
+            return tx.table('messages').toCollection().modify((msg: any) => {
+                if (!msg.queueMetadata && (msg.status === 'pending' || msg.status === 'sending')) {
+                    msg.queueMetadata = {
+                        retryCount: 0,
+                        lastAttemptTimestamp: Date.now(),
+                        enqueuedAt: Date.now()
+                    };
+                }
+            });
+        });
     }
 }
 

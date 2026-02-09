@@ -1,7 +1,7 @@
 import {
   IAddMessageRequest,
 } from "@/services/message.service";
-import { Message } from "@/types";
+import { Message, MessageWithQueue } from "@/types";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
@@ -28,6 +28,46 @@ const getSocket = () => socketService.getSocket();
 export function useMessages(conversationId: string) {
   const [pageSize] = useState(50);
   const { user } = useAuth();
+
+  // Initialize message queue service
+  useEffect(() => {
+    const initQueue = async () => {
+      const { messageQueueService } = await import('@/services/message-queue.service');
+      await messageQueueService.initialize();
+    };
+    initQueue();
+  }, []);
+
+  // Monitor network status and update queue service
+  useEffect(() => {
+    const updateQueueNetworkStatus = async () => {
+      const { messageQueueService } = await import('@/services/message-queue.service');
+
+      const handleOnline = () => {
+        console.log('[useMessages] Network online - notifying queue service');
+        messageQueueService.setNetworkStatus(true);
+      };
+
+      const handleOffline = () => {
+        console.log('[useMessages] Network offline - notifying queue service');
+        messageQueueService.setNetworkStatus(false);
+      };
+
+      // Set initial status
+      messageQueueService.setNetworkStatus(navigator.onLine);
+
+      // Listen for network changes
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    };
+
+    updateQueueNetworkStatus();
+  }, []);
 
   // --- Infinite Scroll Logic (Page-based LiveQuery) ---
 
@@ -193,16 +233,15 @@ export function useSendMessage() {
     try {
       if (!user?.waId) throw new Error("User not authenticated");
 
-      const socket = getSocket();
       const messageId = uuidv4();
-      const conversationId = data.conversationId || ""; // You might need a way to ensure conversationId exists
+      const conversationId = data.conversationId || "";
 
       if (!conversationId) {
         console.warn("Message sending requires conversationId");
         return;
       }
 
-      const newMessage: Message = {
+      const newMessage: MessageWithQueue = {
         id: messageId,
         conversationId,
         from: user.waId,
@@ -210,22 +249,25 @@ export function useSendMessage() {
         text: data.text,
         type: (data.type as any) || "text",
         timestamp: Date.now(),
-        status: "sent",
+        status: "pending", // Always start as pending
         waId: user.waId,
         direction: "outgoing",
         contact: { name: "", waId: user.waId },
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        queueMetadata: {
+          retryCount: 0,
+          lastAttemptTimestamp: Date.now(),
+          enqueuedAt: Date.now()
+        }
       };
 
-      // 1. Save to Dexie immediately
+      // 1. Save to Dexie immediately with queue metadata
       await messageDexieService.addMessage(newMessage);
 
-      // 2. Emit to Socket
-      socket.emit(SocketEvents.MESSAGE_SEND, {
-        message: newMessage,
-        conversationId: conversationId
-      });
+      // 2. Enqueue for processing (will handle online/offline automatically)
+      const { messageQueueService } = await import('@/services/message-queue.service');
+      await messageQueueService.enqueueMessage(newMessage);
 
       options?.onSuccess?.();
     } catch (err) {

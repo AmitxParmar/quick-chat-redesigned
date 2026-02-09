@@ -1,11 +1,11 @@
 import { db } from './db';
-import { Message } from '@/types';
+import { Message, MessageWithQueue, QueueMetadata } from '@/types';
 
 class MessageDexieService {
     /**
      * Add or update a message in the local database
      */
-    async addMessage(message: Message) {
+    async addMessage(message: Message | MessageWithQueue) {
         return await db.messages.put(message);
     }
 
@@ -54,12 +54,6 @@ class MessageDexieService {
      * Mark all messages in a conversation as read for a specific recipient
      */
     async markMessagesAsRead(conversationId: string, userWaId: string) {
-        // Find messages in this conversation sent TO this user that are not read
-        // Note: This might be expensive if we don't have an index on 'to'.
-        // But for now we can filter.
-        // Better: We want to update messages I SENT to THEM.
-        // So 'to' should be the user who read them? Yes.
-
         return await db.messages
             .where('conversationId')
             .equals(conversationId)
@@ -79,12 +73,64 @@ class MessageDexieService {
      * Used for retrying delivery when user comes online
      */
     async getPendingMessages(userWaId: string) {
-        // We want messages SENT TO this user that are stuck in 'sent'
-        // We filter by 'to' and 'status'.
-        // This scans all messages, might need optimization later but ok for now.
         return await db.messages
             .filter(msg => msg.to === userWaId && msg.status === 'sent')
             .toArray();
+    }
+
+    // ============================================
+    // Queue Management Methods
+    // ============================================
+
+    /**
+     * Get messages with pending or sending status for queue restoration
+     * Used when app loads to restore pending messages to the queue
+     */
+    async getPendingMessagesForQueue(): Promise<MessageWithQueue[]> {
+        return await db.messages
+            .where('status')
+            .anyOf(['pending', 'sending'])
+            .toArray() as MessageWithQueue[];
+    }
+
+    /**
+     * Update queue metadata for a message
+     */
+    async updateQueueMetadata(
+        messageId: string,
+        metadata: Partial<QueueMetadata>
+    ): Promise<void> {
+        const message = await db.messages.get(messageId) as MessageWithQueue | undefined;
+        if (message) {
+            await db.messages.update(messageId, {
+                queueMetadata: {
+                    ...message.queueMetadata,
+                    ...metadata
+                } as QueueMetadata
+            });
+        }
+    }
+
+    /**
+     * Clear queue metadata when message is successfully sent
+     */
+    async clearQueueMetadata(messageId: string): Promise<void> {
+        await db.messages.update(messageId, {
+            queueMetadata: undefined
+        });
+    }
+
+    /**
+     * Increment retry count for a message
+     */
+    async incrementRetryCount(messageId: string): Promise<void> {
+        const message = await db.messages.get(messageId) as MessageWithQueue | undefined;
+        if (message?.queueMetadata) {
+            await this.updateQueueMetadata(messageId, {
+                retryCount: message.queueMetadata.retryCount + 1,
+                lastAttemptTimestamp: Date.now()
+            });
+        }
     }
 }
 

@@ -30,6 +30,7 @@
 *.pem
 .vscode
 .gemini
+.kiro
 
 # debug
 npm-debug.log*
