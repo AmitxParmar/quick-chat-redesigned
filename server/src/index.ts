@@ -4,6 +4,7 @@ import { printAppInfo } from './utils/print-app-info';
 import appConfig from './config/app.config';
 import prismaClient from '@/lib/prisma';
 import environment from '@/lib/environment';
+import '@/workers/chat.worker';
 
 configDotenv();
 

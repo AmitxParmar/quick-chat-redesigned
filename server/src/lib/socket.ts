@@ -240,18 +240,49 @@ class SocketService {
         });
 
         // Handle message sending (Direct Socket Relay - No DB)
-        socket.on(SocketEvents.MESSAGE_SEND, (payload: { message: Message; conversationId: string }) => {
-            const { message, conversationId } = payload;
+        socket.on(SocketEvents.MESSAGE_SEND, async (payload: { message: Message; conversationId: string }, callback?: (ack: any) => void) => {
+            try {
+                const { message, conversationId } = payload;
 
-            if (!message || !conversationId) return;
+                // 1. Validation
+                if (!message || !conversationId) {
+                    throw new Error('Invalid payload: message and conversationId are required');
+                }
 
-            logger.info(`Relaying message ${message.id} for conversation ${conversationId}`);
+                // Verify sender identity (Security)
+                if (socket.user?.waId !== message.from) {
+                    logger.warn(`Potential spoofing attempt: User ${socket.user?.waId} tried to send as ${message.from}`);
+                    throw new Error('Unauthorized: Sender identity mismatch');
+                }
 
-            // Broadcast to conversation room (including sender if they have multiple tabs)
-            // AND participants specifically
-            const participants = [message.from, message.to];
+                logger.info(`Relaying message ${message.id} for conversation ${conversationId}`);
 
-            this.emitMessageCreated(conversationId, { message, conversationId }, participants);
+                // Broadcast to conversation room (including sender if they have multiple tabs)
+                // AND participants specifically
+                const participants = [message.from, message.to];
+
+                this.emitMessageCreated(conversationId, { message, conversationId }, participants);
+
+                // 2. Offload to Queue (Scalability)
+                // Late bind queue to avoid circular dependencies if possible, or just import
+                const { chatQueue } = await import('@/lib/queue');
+                chatQueue.add('new_message', {
+                    type: 'new_message',
+                    payload: payload
+                }, {
+                    removeOnComplete: true
+                });
+
+                // 3. Acknowledgement (Reliability)
+                if (callback) {
+                    callback({ status: 'ok', messageId: message.id });
+                }
+            } catch (error) {
+                logger.error(`Message send error: ${error.message}`);
+                if (callback) {
+                    callback({ error: error.message });
+                }
+            }
         });
 
         // Handle messages marked as read
