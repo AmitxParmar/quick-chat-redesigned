@@ -4,6 +4,7 @@ import prisma from '@/lib/prisma';
 import { HttpBadRequestError, HttpNotFoundError, HttpForbiddenError } from '@/lib/errors';
 import logger from '@/lib/logger';
 import socketService from '@/lib/socket';
+import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 
 /**
  * Normalize WhatsApp ID (add 91 prefix if missing)
@@ -13,6 +14,15 @@ const normalizeWaId = (waId: string): string => {
 };
 
 export default class ConversationService {
+    /**
+     * Helper to invalidate user's conversation list cache
+     */
+    private async invalidateUserCache(waId: string): Promise<void> {
+        const key = CacheKeys.USER_CONVERSATIONS(waId);
+        await cacheService.del(key);
+        logger.debug(`[Cache] Invalidated conversation list for user ${waId}`);
+    }
+
     /**
      * Get or create conversation ID for two participants
      */
@@ -78,6 +88,12 @@ export default class ConversationService {
         // Create conversation with conversationId
         const newConversation = await conversationRepository.create(participants);
 
+        // Invalidate cache for both participants
+        await Promise.all([
+            this.invalidateUserCache(fromId),
+            this.invalidateUserCache(toId),
+        ]);
+
         logger.info(
             `[getConversationId] created conversationId=${newConversation.id} participants=${participants.map((p) => p.waId).join(',')}`
         );
@@ -90,16 +106,43 @@ export default class ConversationService {
     }
 
     /**
-     * Get all conversations for a user
+     * Get all conversations for a user with caching and pagination
      */
-    public async getConversations(waId: string): Promise<Conversation[]> {
-        const conversations = await conversationRepository.findByUserWaId(waId);
+    public async getConversations(
+        waId: string,
+        limit: number = 20,
+        cursor?: string
+    ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
+        // Prepare cache key
+        const cacheKey = CacheKeys.USER_CONVERSATIONS(waId);
+
+        // Try to fetch from cache if requesting first page (no cursor)
+        if (!cursor) {
+            const cached = await cacheService.get<{
+                conversations: Conversation[];
+                nextCursor: string | null;
+            }>(cacheKey);
+
+            if (cached) {
+                logger.debug(`[getConversations] Cache HIT for user ${waId}`);
+                return cached;
+            }
+        }
+
+        // Fetch from DB
+        const result = await conversationRepository.findByUserWaId(waId, limit, cursor);
 
         logger.info(
-            `[getConversations] Found ${conversations.length} conversations for user ${waId}`
+            `[getConversations] Found ${result.conversations.length} conversations for user ${waId} (DB)`
         );
 
-        return conversations;
+        // Cache result if it's the first page
+        if (!cursor) {
+            await cacheService.set(cacheKey, result, CacheTTL.USER_CONVERSATIONS);
+            logger.debug(`[getConversations] Cache SET for user ${waId}`);
+        }
+
+        return result;
     }
 
     /**
@@ -110,8 +153,8 @@ export default class ConversationService {
         waId: string
     ): Promise<{
         lastMessageStatusUpdated: boolean;
-        lastMessageBefore;
-        lastMessageAfter;
+        lastMessageBefore: any;
+        lastMessageAfter: any;
         affectedMessagesCount: number;
     }> {
         // Verify conversation exists and user is participant
@@ -162,7 +205,7 @@ export default class ConversationService {
 
         // Emit status updates for EACH updated message
         unreadMessages.forEach(msg => {
-            logger.info(`[markAsRead] Emitting status update for message: ${msg.id}`);
+            // logger.info(`[markAsRead] Emitting status update for message: ${msg.id}`);
             socketService.emitMessageStatusUpdated(conversationId, {
                 id: msg.id,
                 conversationId: msg.conversationId,
@@ -177,23 +220,23 @@ export default class ConversationService {
             orderBy: { timestamp: 'desc' },
         });
 
-        // Reset unreadCount for the user
+        // Reset unreadCount for the user (assuming repo method handles this)
         await conversationRepository.markAsRead(conversationId);
 
         let lastMessageUpdated = false;
 
         // If we found a last message, update the conversation's lastMessage snapshot
-        // This ensures the preview reflects the current status (e.g. 'read')
         if (lastMsg) {
-            // We only strictly *need* to update if it was an incoming message that we just read
-            // OR if we want to ensure eventual consistency. 
-            // Updating it with the fresh lastMsg is the safest bet to ensure UI is correct.
             await conversationRepository.updateLastMessage(conversationId, lastMsg);
             lastMessageUpdated = true;
         }
 
         // Get updated conversation
         const updatedConversation = await conversationRepository.findById(conversationId);
+
+        // Cache Invalidation: Invalidate user's conversation list
+        // because unread count changed
+        await this.invalidateUserCache(waId);
 
         // Emit socket events
         if (updatedConversation) {
@@ -262,17 +305,19 @@ export default class ConversationService {
         }
 
         let result: Conversation;
+        const participants = conversation.participants.map(p => p.waId);
 
         if (deleteType === 'soft') {
             // Archive conversation
             result = await conversationRepository.archive(conversationId);
 
-            const participants = (result.participants || conversation.participants).map(p => p.waId);
-
             // Emit socket event
             socketService.emitConversationUpdated(conversationId, result, participants);
 
             logger.info(`[deleteConversation] Archived conversation: ${conversationId}`);
+
+            // Invalidate cache for ALL participants (since archive is shared)
+            await Promise.all(participants.map(p => this.invalidateUserCache(p)));
 
             return {
                 conversationId,
@@ -293,8 +338,6 @@ export default class ConversationService {
             // Delete conversation
             result = await conversationRepository.delete(conversationId);
 
-            const participants = (conversation.participants).map((p) => p.waId);
-
             // Emit socket event
             socketService.emitConversationDeleted(conversationId, {
                 conversationId,
@@ -305,6 +348,9 @@ export default class ConversationService {
             logger.info(
                 `[deleteConversation] Permanently deleted conversation: ${conversationId}`
             );
+
+            // Invalidate cache for ALL participants
+            await Promise.all(participants.map(p => this.invalidateUserCache(p)));
 
             return {
                 conversationId,

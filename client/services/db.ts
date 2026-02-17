@@ -1,8 +1,8 @@
 import Dexie, { Table } from 'dexie';
-import { Message } from '@/types';
+import { Message, MessageWithQueue } from '@/types';
 
 export class QuickChatDB extends Dexie {
-    messages!: Table<Message, string>;
+    messages!: Table<MessageWithQueue, string>;
 
     constructor() {
         super('QuickChatDB');
@@ -33,4 +33,28 @@ export class QuickChatDB extends Dexie {
     }
 }
 
-export const db = new QuickChatDB();
+// Lazy singleton — Dexie instance is only created when first accessed,
+// deferring IndexedDB initialization from module load time
+let _db: QuickChatDB | null = null;
+
+export function getDb(): QuickChatDB {
+    if (!_db) {
+        _db = new QuickChatDB();
+    }
+    return _db;
+}
+
+/**
+ * @deprecated Use getDb() instead for lazy initialization.
+ * Kept for backward compatibility — returns the lazily-initialized instance.
+ */
+export const db = new Proxy({} as QuickChatDB, {
+    get(_target, prop, receiver) {
+        const instance = getDb();
+        const value = Reflect.get(instance, prop, receiver);
+        if (typeof value === 'function') {
+            return value.bind(instance);
+        }
+        return value;
+    },
+});

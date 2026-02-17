@@ -5,7 +5,6 @@ import { Message, MessageWithQueue } from "@/types";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
-import { useLiveQuery } from "dexie-react-hooks";
 import { liveQuery } from "dexie";
 import { messageDexieService } from "@/services/message.dexie.service";
 import { v4 as uuidv4 } from "uuid";
@@ -229,7 +228,7 @@ export function useSendMessage() {
    * @param options.onSuccess - Callback triggered on successful message send.
    * @param options.onError - Callback triggered on message send failure.
    */
-  const sendMessage = useCallback(async (data: IAddMessageRequest, options?: { onSuccess?: () => void; onError?: (err: any) => void }) => {
+  const sendMessage = useCallback(async (data: IAddMessageRequest, options?: { onSuccess?: () => void; onError?: (err: unknown) => void }) => {
     try {
       if (!user?.waId) throw new Error("User not authenticated");
 

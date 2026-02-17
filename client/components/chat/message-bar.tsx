@@ -98,6 +98,7 @@ function MessageBar() {
           size={"icon"}
           className="size-10 flex bg-transparent text-primary items-center justify-center rounded-full hover:bg-searchbar/50 transition-colors duration-150"
           tabIndex={0}
+          aria-label="Attach File"
         >
           <Plus className="text-panel-header-icon cursor-pointer size-6" />
         </Button>
@@ -107,6 +108,7 @@ function MessageBar() {
           id="emoji-open"
           tabIndex={0}
           onClick={handleEmojiModal}
+          aria-label="Open Emoji Picker"
         >
           <Smile className="text-panel-header-icon cursor-pointer size-6" />
         </Button>
@@ -132,6 +134,7 @@ function MessageBar() {
           className={`${message === "" ? "opacity-20" : null}`}
           type="button"
           onClick={message.length ? handleSubmit : undefined}
+          aria-label={message.length ? "Send Message" : "Record Voice Message"}
         >
           {message.length ? (
             <SendHorizontal className="text-panel-header-icon cursor-pointer text-xl" />

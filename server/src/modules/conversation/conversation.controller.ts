@@ -88,10 +88,11 @@ export default class ConversationController extends Api {
 
     /**
      * GET /conversations - Get all conversations for authenticated user
+     * Supports cursor-based pagination
      */
     public getConversations = async (
         req: AuthRequest,
-        res: CustomResponse<Conversation[] | null>,
+        res: CustomResponse<{ conversations: Conversation[]; nextCursor: string | null } | null>,
         next: NextFunction
     ) => {
         try {
@@ -102,13 +103,20 @@ export default class ConversationController extends Api {
                 });
             }
 
-            const conversations = await this.conversationService.getConversations(
-                req.user.waId
+            const { limit, cursor } = req.query;
+
+            const parsedLimit = limit ? parseInt(limit as string, 10) : 20;
+            const parsedCursor = cursor ? (cursor as string) : undefined;
+
+            const result = await this.conversationService.getConversations(
+                req.user.waId,
+                parsedLimit,
+                parsedCursor
             );
 
             this.send(
                 res,
-                conversations,
+                result,
                 HttpStatusCode.Ok,
                 'Conversations retrieved successfully'
             );

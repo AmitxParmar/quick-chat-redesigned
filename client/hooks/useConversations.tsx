@@ -4,7 +4,12 @@ import {
   getConversationId,
   deleteConversation,
 } from "@/services/conversations.service";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useRef, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import api from "@/lib/api";
@@ -33,6 +38,10 @@ export function useConversations() {
     }) => void)
     | null
   >(null);
+  const messageCreatedListenerRef = useRef<
+    ((payload: { message: any; conversationId: string }) => void) | null
+  >(null);
+  const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     // Only run in browser and when user is authenticated and available
@@ -44,32 +53,30 @@ export function useConversations() {
     const onConversationUpdated = (conversation: Conversation) => {
       console.log("Socket: conversation:updated received:", conversation.id);
 
-      // Update the conversations cache
-      qc.setQueryData(
+      // Update the infinite query data
+      qc.setQueryData<InfiniteData<{ conversations: Conversation[]; nextCursor: string | null }>>(
         ["conversations", user.waId],
-        (oldConvo: Conversation[] | undefined) => {
-          if (!oldConvo) return oldConvo;
+        (oldData) => {
+          if (!oldData) return oldData;
 
-          // Find the conversation to update
-          const idx = oldConvo.findIndex(
-            (convo) => convo.id === conversation.id
-          );
+          // 1. Remove conversation if it exists in any page
+          const newPages = oldData.pages.map((page) => ({
+            ...page,
+            conversations: page.conversations.filter((c) => c.id !== conversation.id),
+          }));
 
-          if (idx === -1) {
-            // If conversation doesn't exist, add it to the beginning
-            return [conversation, ...oldConvo];
+          // 2. Add the updated/new conversation to the top of the first page
+          if (newPages.length > 0) {
+            newPages[0].conversations.unshift(conversation);
+          } else {
+            // Should not happen if data exists, but purely defensive
+            newPages.push({ conversations: [conversation], nextCursor: null });
           }
 
-          // Update the conversation and move it to the top
-          const updatedConvo = {
-            ...oldConvo[idx],
-            ...conversation,
+          return {
+            ...oldData,
+            pages: newPages,
           };
-          return [
-            updatedConvo,
-            ...oldConvo.slice(0, idx),
-            ...oldConvo.slice(idx + 1),
-          ];
         }
       );
     };
@@ -89,45 +96,107 @@ export function useConversations() {
       }
 
       // Update the conversations cache with the updated conversation
-      qc.setQueryData(
+      qc.setQueryData<InfiniteData<{ conversations: Conversation[]; nextCursor: string | null }>>(
         ["conversations", user.waId],
-        (oldConvo: Conversation[] | undefined) => {
-          if (!oldConvo) return oldConvo;
+        (oldData) => {
+          if (!oldData) return oldData;
 
-          const idx = oldConvo.findIndex((convo) => convo.id === payload.conversationId);
-
-          if (idx === -1) {
-            console.log("[Socket] Conversation not found in cache");
-            return oldConvo;
-          }
-
-          // Update the conversation with new status
-          const updatedConvo = {
-            ...oldConvo[idx],
-            ...payload.conversation,
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page) => ({
+              ...page,
+              conversations: page.conversations.map((convo) => {
+                if (convo.id === payload.conversationId) {
+                  return {
+                    ...convo,
+                    ...payload.conversation,
+                    unreadCount: payload.conversation.unreadCount
+                  };
+                }
+                return convo;
+              }),
+            })),
           };
-
-          console.log("[Socket] Updated conversation unreadCount:", updatedConvo.unreadCount);
-
-          return [
-            updatedConvo,
-            ...oldConvo.slice(0, idx),
-            ...oldConvo.slice(idx + 1),
-          ];
         }
       );
+    };
 
-      // DON'T update messages cache here to prevent triggering useEffect
-      // The server response will handle the status update
+    // Create a listener for new messages to update conversation list
+    const onMessageReceived = (payload: { message: any; conversationId: string }) => {
+      const { message } = payload;
+      if (processedMessageIdsRef.current.has(message.id)) {
+        return;
+      }
+      processedMessageIdsRef.current.add(message.id);
+      setTimeout(() => {
+        processedMessageIdsRef.current.delete(message.id);
+      }, 5000);
+
+      console.log("[Socket] message:created received in useConversations:", payload.conversationId);
+
+      qc.setQueryData<InfiniteData<{ conversations: Conversation[]; nextCursor: string | null }>>(
+        ["conversations", user.waId],
+        (oldData) => {
+          if (!oldData) return oldData;
+
+          const { message, conversationId } = payload;
+          let conversationToUpdate: Conversation | undefined;
+
+          // 1. Find and remove conversation if it exists
+          const newPages = oldData.pages.map((page) => {
+            const found = page.conversations.find((c) => c.id === conversationId);
+            if (found) {
+              conversationToUpdate = found;
+              return {
+                ...page,
+                conversations: page.conversations.filter((c) => c.id !== conversationId),
+              };
+            }
+            return page;
+          });
+
+          // 2. If we found it, update it and add to top.
+          // If NOT found, we ideally should fetch it, but for now we only update if existing.
+          if (conversationToUpdate) {
+            const updatedConversation = {
+              ...conversationToUpdate,
+              lastMessage: {
+                text: message.text,
+                timestamp: message.timestamp,
+                from: message.from,
+                status: message.status,
+              },
+              updatedAt: new Date().toISOString(),
+              // Increment unread count if message is NOT from us
+              unreadCount: message.from !== user.waId
+                ? (conversationToUpdate.unreadCount || 0) + 1
+                : conversationToUpdate.unreadCount
+            };
+
+            if (newPages.length > 0) {
+              newPages[0].conversations.unshift(updatedConversation as Conversation);
+            } else {
+              newPages.push({ conversations: [updatedConversation as Conversation], nextCursor: null });
+            }
+          }
+
+          return {
+            ...oldData,
+            pages: newPages,
+          };
+        }
+      );
     };
 
     // Store the listener references for cleanup
     listenerRef.current = onConversationUpdated;
     markAsReadListenerRef.current = onMessagesMarkedAsRead;
+    messageCreatedListenerRef.current = onMessageReceived;
 
     // Add listeners to socket
     socket.on(SocketEvents.CONVERSATION_UPDATED, onConversationUpdated);
     socket.on(SocketEvents.MESSAGES_MARKED_AS_READ, onMessagesMarkedAsRead);
+    socket.on(SocketEvents.MESSAGE_CREATED, onMessageReceived);
 
     // Cleanup function
     return () => {
@@ -139,14 +208,20 @@ export function useConversations() {
         socket.off(SocketEvents.MESSAGES_MARKED_AS_READ, markAsReadListenerRef.current);
         markAsReadListenerRef.current = null;
       }
+      if (messageCreatedListenerRef.current) {
+        socket.off(SocketEvents.MESSAGE_CREATED, messageCreatedListenerRef.current);
+        messageCreatedListenerRef.current = null;
+      }
     };
   }, [user?.waId, isAuthenticated, qc]);
 
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ["conversations", user?.waId],
-    queryFn: () => fetchAllConversations(),
+    queryFn: ({ pageParam }) => fetchAllConversations(20, pageParam as string | undefined),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     retry: 2,
-    staleTime: 1000 * 60 * 1,
+
     enabled: !!isAuthenticated && !!user?.waId, // Only run when authenticated and user exists
     refetchOnWindowFocus: false,
     refetchOnMount: false,

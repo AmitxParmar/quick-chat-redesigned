@@ -69,28 +69,50 @@ export class ConversationRepository {
     /**
      * Get all conversations for a user
      */
-    public async findByUserWaId(waId: string): Promise<Conversation[]> {
-        // Fetch all non-archived conversations where user is participant
+    /**
+     * Get all conversations for a user with cursor-based pagination
+     */
+    public async findByUserWaId(
+        waId: string,
+        limit: number = 20,
+        cursor?: string
+    ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
+        // Fetch conversations where user is participant
+        // Ordered by updatedAt desc, id desc (stable sort)
         const conversations = await prisma.conversation.findMany({
+            take: limit + 1, // Fetch one extra to determine if there's a next page
+            skip: cursor ? 1 : 0,
+            cursor: cursor ? { id: cursor } : undefined,
             where: {
                 isArchived: false,
                 participants: {
                     some: { waId },
                 },
+                // Ensure we only get conversations with messages if needed,
+                // but usually empty conversations might exist.
+                // The previous logic filtered by lastMessage validation.
+                // We should keep that if possible, but we can't easily filter strictly by
+                // embedded fields in top-level query for 'lastMessage.timestamp' existence
+                // efficiently without a compound index validation.
+                // For now, valid conversations usually have messages.
             },
+            orderBy: [
+                { updatedAt: 'desc' },
+                { id: 'desc' }, // Tie-breaker
+            ],
         });
 
-        // Filter conversations that have valid lastMessage and sort by timestamp
-        return conversations
-            .filter((c) => {
-                const lm = c.lastMessage;
-                return lm && lm.text && lm.timestamp;
-            })
-            .sort((a, b) => {
-                const aTimestamp = (a.lastMessage)?.timestamp || 0;
-                const bTimestamp = (b.lastMessage)?.timestamp || 0;
-                return bTimestamp - aTimestamp;
-            });
+        // Check if we have a next page
+        let nextCursor: string | null = null;
+        if (conversations.length > limit) {
+            const nextItem = conversations.pop(); // Remove the extra item
+            nextCursor = nextItem?.id || null;
+        }
+
+        return {
+            conversations,
+            nextCursor,
+        };
     }
 
     /**

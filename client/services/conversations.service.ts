@@ -3,10 +3,18 @@ import { Conversation, User } from "@/types";
 
 const API_BASE = "/conversations";
 
-// Get all conversations
-export async function fetchAllConversations(): Promise<Conversation[] | []> {
-  const response = await api.get(API_BASE);
-  return response.data.data || [];
+// Get all conversations with pagination
+export async function fetchAllConversations(
+  limit: number = 20,
+  cursor?: string
+): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
+  const response = await api.get(API_BASE, {
+    params: {
+      limit,
+      cursor,
+    },
+  });
+  return response.data.data || { conversations: [], nextCursor: null };
 }
 
 type MarkRead = {

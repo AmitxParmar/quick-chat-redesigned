@@ -13,6 +13,13 @@ const nextConfig: NextConfig = {
       "@radix-ui/react-slot",
       "date-fns",
       "emoji-picker-react",
+      "@tanstack/react-query",
+      "@tanstack/react-virtual",
+      "react-hook-form",
+      "@hookform/resolvers",
+      "zod",
+      "sonner",
+      "zustand",
     ],
   },
 };

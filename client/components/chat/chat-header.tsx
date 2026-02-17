@@ -98,13 +98,13 @@ function ChatHeader() {
           </div>
         </div>
         <div className="flex items-center space-x-1 sm:space-x-2">
-          <Button variant="ghost" size="sm" className="p-2 sm:p-2">
+          <Button variant="ghost" size="sm" className="p-2 sm:p-2" aria-label="Audio Call">
             <Phone className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="sm" className="p-2 sm:p-2">
+          <Button variant="ghost" size="sm" className="p-2 sm:p-2" aria-label="Video Call">
             <Video className="h-5 w-5" />
           </Button>
-          <Button variant="ghost" size="sm" className="p-2 sm:p-2">
+          <Button variant="ghost" size="sm" className="p-2 sm:p-2" aria-label="More Options">
             <MoreVertical className="h-5 w-5" />
           </Button>
         </div>

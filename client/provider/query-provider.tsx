@@ -1,9 +1,17 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import dynamic from "next/dynamic";
 import { setQueryClient } from "@/lib/api";
 import { useState, useEffect } from "react";
+
+const ReactQueryDevtools = dynamic(
+  () =>
+    import("@tanstack/react-query-devtools").then((m) => ({
+      default: m.ReactQueryDevtools,
+    })),
+  { ssr: false }
+);
 
 export default function QueryProvider({
   children,
@@ -17,8 +25,6 @@ export default function QueryProvider({
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Default cache time of 5 minutes
-
             // Keep data in cache for 10 minutes after component unmounts
             gcTime: 10 * 60 * 1000,
             // Retry failed requests 3 times
@@ -41,13 +47,11 @@ export default function QueryProvider({
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ReactQueryDevtools initialIsOpen={false} />
-
       {children}
       {/* Only show devtools in development */}
-      {/* {process.env.NODE_ENV === "development" && (
+      {process.env.NODE_ENV === "development" && (
         <ReactQueryDevtools initialIsOpen={false} />
-      )} */}
+      )}
     </QueryClientProvider>
   );
 }

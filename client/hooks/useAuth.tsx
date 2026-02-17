@@ -89,7 +89,10 @@ const useAuth = () => {
   const router = useRouter();
   const pathname = usePathname();
   const isLoginPage = pathname === "/login";
-  const userQuery = useCurrentUser({ enabled: !isLoginPage });
+  const isPublicPage = pathname === "/login" || pathname === "/register";
+  // Only fetch user if NOT on a public page to avoid api.ts interceptor redirecting
+  // (since api.ts redirects on 401, and we expect 401 on public pages if not logged in)
+  const userQuery = useCurrentUser({ enabled: !isPublicPage });
   const isLoading = userQuery.isLoading;
   const isAuthenticated = !!(userQuery.data && !userQuery.error);
 
@@ -98,7 +101,7 @@ const useAuth = () => {
 
   // Redirect to login if unauthenticated and not loading
   useEffect(() => {
-    if (isUnauthenticated && !isLoading && !isLoginPage) {
+    if (isUnauthenticated && !isLoading && !isPublicPage) {
       // Clear any cached data to avoid showing stale state
       if (typeof window !== "undefined") {
         try {
@@ -109,7 +112,7 @@ const useAuth = () => {
         }
       }
     }
-  }, [isUnauthenticated, isLoading, isLoginPage, router]);
+  }, [isUnauthenticated, isLoading, isPublicPage, router]);
 
   return {
     user: userQuery.data as User,

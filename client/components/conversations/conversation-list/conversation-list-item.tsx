@@ -174,6 +174,7 @@ export const ConversationListItem = React.memo<ConversationListItemProps>(
             onClick={(e) => handleDeleteConversation(e, "soft")}
             className="p-1 rounded-full hover:bg-red-100 text-gray-500 hover:text-orange-600 transition-colors"
             title="Archive conversation"
+            aria-label="Archive conversation"
           >
             <Archive className="w-4 h-4" />
           </button>
@@ -181,6 +182,7 @@ export const ConversationListItem = React.memo<ConversationListItemProps>(
             onClick={(e) => handleDeleteConversation(e, "hard")}
             className="p-1 rounded-full hover:bg-red-100 text-gray-500 hover:text-red-600 transition-colors"
             title="Delete conversation permanently"
+            aria-label="Delete conversation permanently"
           >
             <Trash2 className="w-4 h-4" />
           </button>

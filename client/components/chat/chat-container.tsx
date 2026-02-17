@@ -1,8 +1,9 @@
 import MessageLoader from "../common/message-loader";
+import Image from "next/image";
 import MessageBubble from "./message-bubble";
 import { useMessages } from "@/hooks/useMessages";
 import { useAutoMarkAsRead } from "@/hooks/useConversations";
-import { memo, useMemo, useRef, useEffect, useCallback } from "react";
+import { memo, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import useAuth from "./../../hooks/useAuth";
@@ -43,25 +44,26 @@ function ChatContainer() {
   const isLoadingMoreRef = useRef<boolean>(false);
 
   // Auto-scroll to bottom on initial load or NEW messages (at the end of the array)
-  useEffect(() => {
+  // We use useLayoutEffect here to ensure we scroll BEFORE the browser paints
+  // preventing a flash of the "before scroll" state
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || messagesList.length === 0) return;
 
-    if (isLoadingMoreRef.current) {
-      // Message prepended (Load More)
-      const newScrollHeight = rowVirtualizer.getTotalSize();
-      const scrollDiff = newScrollHeight - prevScrollHeightRef.current;
-      el.scrollTop = scrollDiff;
-      isLoadingMoreRef.current = false;
-    } else {
-      // Newest message (at end) - auto scroll to bottom
+    // optimization: only auto-scroll if we are ALREADY near the bottom
+    // OR if it's the very first load
+    // But for now, let's keep it simple: if not loading more, scroll to bottom
+    if (!isLoadingMoreRef.current) {
       rowVirtualizer.scrollToIndex(messagesList.length - 1, { align: "end" });
     }
+    // If we ARE loading more, overflow-anchor (CSS) handles the position!
+    // No need for manual scrollTop adjustment which causes reflows.
+    // just reset the ref
+    isLoadingMoreRef.current = false;
   }, [messagesList.length, rowVirtualizer, conversationId]);
 
   const handleLoadMore = () => {
     if (!scrollRef.current) return;
-    prevScrollHeightRef.current = rowVirtualizer.getTotalSize();
     isLoadingMoreRef.current = true;
     fetchNextPage();
   };
@@ -83,7 +85,13 @@ function ChatContainer() {
     <div
       ref={scrollRef}
       className="h-[80vh] w-full relative flex-grow overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col"
-      style={{ overscrollBehaviorX: "none", WebkitOverflowScrolling: "touch" }}
+      // overflow-anchor: auto is the magic CSS property that prevents scroll jumping
+      // when content is added above the current scroll position
+      style={{
+        overscrollBehaviorX: "none",
+        WebkitOverflowScrolling: "touch",
+        overflowAnchor: "auto"
+      }}
     >
       <div className="bg-gray-400 dark:bg-[url(/chat-bg.png)] bg-fixed fixed h-full w-full opacity-5 !z-0 pointer-events-none"></div>
 

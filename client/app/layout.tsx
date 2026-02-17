@@ -1,4 +1,4 @@
-import GlobalSocketListener from "@/components/common/global-socket-listener";
+import ClientSocketListener from "@/components/common/client-socket-listener";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -23,11 +23,14 @@ export default function RootLayout({
 }>) {
   return (
     <html suppressHydrationWarning lang="en">
+      <head>
+        <link rel="preload" as="image" href="/chat-bg.png" fetchPriority="high" />
+      </head>
       <body
-        className={`${inter.variable} font-inter zoom-in-100 antialiased max-h-screen h-screen`}
+        className={`${inter.variable} font-inter antialiased max-h-screen h-screen`}
       >
         <QueryProvider>
-          <GlobalSocketListener />
+          <ClientSocketListener />
           <ThemeProvider>{children}</ThemeProvider>
           <Toaster />
         </QueryProvider>

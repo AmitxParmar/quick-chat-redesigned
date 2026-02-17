@@ -1,9 +1,9 @@
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import api from "@/lib/api";
 
 class SocketService {
     private socket: Socket | null = null;
-    private static instance: SocketService;
+    private static instance: SocketService | null = null;
 
     public static getInstance(): SocketService {
         if (!SocketService.instance) {
@@ -14,21 +14,23 @@ class SocketService {
 
     public getSocket(): Socket {
         if (!this.socket) {
+            // Dynamic import at first use was considered but socket.io-client
+            // needs to be synchronous here since callers expect a Socket back.
+            // Instead we rely on the module being loaded lazily via the dynamic 
+            // import of GlobalSocketListener which is the main consumer.
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { io } = require("socket.io-client");
+
             // Extract origin from baseURL to ensure we connect to root
-            // api.defaults.baseURL is like "http://localhost:8000/api/v1/development"
-            // We want "http://localhost:8000"
             let url = "http://localhost:8000";
             const apiBase = api.defaults.baseURL;
 
             if (apiBase) {
                 try {
-                    // If apiBase is a full URL, parse it
                     if (apiBase.startsWith("http")) {
                         const parsedUrl = new URL(apiBase);
                         url = parsedUrl.origin;
                     } else {
-                        // If it's relative, just assume current origin (window.location.origin in browser)
-                        // But for SSR safety or if apiBase is just path
                         if (typeof window !== "undefined") {
                             url = window.location.origin;
                         }
@@ -48,25 +50,23 @@ class SocketService {
                 perMessageDeflate: {
                     threshold: 1024,
                 },
-                // Disable HTTP polling compression on the client
-
                 reconnectionAttempts: 5,
                 reconnectionDelay: 1000,
             });
 
-            this.socket.on("connect", () => {
+            this.socket!.on("connect", () => {
                 console.log("[SocketService] Connected with ID:", this.socket?.id);
             });
 
-            this.socket.on("connect_error", (err) => {
+            this.socket!.on("connect_error", (err: Error) => {
                 console.error("[SocketService] Connection error:", err.message);
             });
 
-            this.socket.on("disconnect", (reason) => {
+            this.socket!.on("disconnect", (reason: string) => {
                 console.log("[SocketService] Disconnected:", reason);
             });
         }
-        return this.socket;
+        return this.socket!;
     }
 
     public disconnect() {
@@ -77,5 +77,21 @@ class SocketService {
     }
 }
 
-export const socketService = SocketService.getInstance();
+// Lazy singleton — don't call getInstance() at module level to avoid
+// importing socket.io-client during module evaluation
+let _instance: SocketService | null = null;
+
+export function getSocketService(): SocketService {
+    if (!_instance) {
+        _instance = SocketService.getInstance();
+    }
+    return _instance;
+}
+
+// Backward-compatible export using a getter
+export const socketService = {
+    getSocket: () => getSocketService().getSocket(),
+    disconnect: () => getSocketService().disconnect(),
+};
+
 export default socketService;

@@ -6,8 +6,40 @@ import { useUIStore } from "@/store/ui-store";
 import ContactList from "@/components/contacts-list";
 
 const ConversationList = () => {
-  const { data: conversations, isLoading, error } = useConversations();
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useConversations();
   const isContactListOpen = useUIStore((state) => state.isContactListOpen);
+  const observerTarget = React.useRef<HTMLDivElement>(null);
+
+  // Flatten conversations from all pages
+  const conversations = React.useMemo(() => {
+    return data?.pages.flatMap((page) => page.conversations) || [];
+  }, [data]);
+
+  // Infinite scroll observer
+  React.useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 1.0 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
   console.log("Error Contact List", error);
 
   // If contact list is open, render it instead of conversations
@@ -19,14 +51,18 @@ const ConversationList = () => {
     <div className="flex-auto overflow-auto px-1.5 max-h-full custom-scrollbar">
       {isLoading ? (
         <ConversationListSkeleton />
-      ) : conversations && Array.isArray(conversations) ? (
-        conversations?.length === 0 ? (
-          <NoConversations />
-        ) : (
-          conversations?.map((contact) => (
+      ) : conversations.length > 0 ? (
+        <>
+          {conversations.map((contact) => (
             <ConversationListItem key={contact.id} data={contact} />
-          ))
-        )
+          ))}
+          {/* Sentinel for infinite scroll */}
+          <div ref={observerTarget} className="h-4 w-full flex justify-center py-2">
+            {isFetchingNextPage && (
+              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
+            )}
+          </div>
+        </>
       ) : (
         <NoConversations />
       )}

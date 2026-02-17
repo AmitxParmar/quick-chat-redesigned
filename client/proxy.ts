@@ -10,7 +10,7 @@ const protectedRoutes = ['/'];
 export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const accessToken = request.cookies.get('access_token')?.value;
-
+    console.log("accessToken", accessToken)
     // Check if this is a public route
     const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
 

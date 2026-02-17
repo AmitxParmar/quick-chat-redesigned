@@ -71,57 +71,111 @@ See [Server README](./server/README.md) for full deployment instructions (Render
 
 ## 📡 Message System Architecture
 
-Quick Chat uses a **Local-First** architecture with **Socket.io Relay** for real-time messaging. This ensures messages are instantly available to the sender and delivered in real-time to recipients without relying on server-side database persistence for the message content itself.
+Quick Chat uses a **Local-First** architecture with **Secure Socket Relay** and **Background Processing** for a robust and scalable messaging experience.
 
 ### Key Concepts
 
-1.  **Local Storage (Dexie.js)**: All messages (sent and received) are stored locally in the user's browser using IndexedDB. This allows for offline access and instant UI updates (Optimistic UI).
-2.  **Socket.io Relay**: The server acts as a relay. It accepts a message from the sender and immediately broadcasts it to the recipient(s). It does *not* save the message content to MongoDB.
-3.  **Delivery Status**:
-    *   **Single Tick**: Message saved locally and sent to server.
-    *   **Double Tick (Delivered)**: Recipient received the message and acknowledged it via a socket event.
-    *   **Blue Tick (Read)**: Recipient opened the chat and the app emitted a read receipt.
-4.  **Offline Capability**: If a recipient is offline, the sender's client listens for the `user:online` event. When the recipient comes online, the sender's client automatically resends any pending messages.
+1.  **Local Storage (Dexie.js)**: All messages are persisted locally in the user's browser (IndexedDB). This ensures instant UI updates (Optimistic UI) and offline access.
+2.  **Secure Socket Relay**: The server acts as a secure relay. It validates every message, ensures the sender's identity matches the socket token, and immediately broadcasts to recipients.
+    *   **Validation**: Strict Zod schema validation for all payloads.
+    *   **Security**: Prevents sender spoofing by verifying `socket.user.waId`.
+    *   **Reliability**: The server sends an **Acknowledgement (Ack)** back to the sender only after successful processing.
+3.  **Background Processing (BullMQ)**: Heavy tasks are offloaded to a Redis-backed queue (`chat-events`) to keep the socket server responsive.
+    *   **Worker**: Handles tasks like Push Notifications (FCM/OneSignal), Analytics, and Search Indexing asynchronously.
+4.  **Delivery Status**:
+    *   **Clock Icon**: Message pending (saved locally, waiting for network/Ack).
+    *   **Single Tick**: Server acknowledged receipt (processed & relayed).
+    *   **Double Tick**: Recipient received the message (via socket event).
+    *   **Blue Tick**: Recipient read the message.
+
+### 💥 Impacts & Improvements
+
+*   **Reliability**: The implementation of **Socket Acknowledgements** ensures messages are never lost "in the ether". Clients know exactly when the server has processed a message.
+*   **Scalability**: By introducing **BullMQ and Redis**, we've decoupled message relaying from heavy side-effects. Sending a message remains fast (ms), while operations like Push Notifications happen in the background.
+*   **Security**: Enhanced validation prevents malicious users from spoofing sender IDs or sending malformed payloads that could crash the server.
+*   **Maintainability**: The architecture is now modular. The `SocketService` handles real-time comms, while `ChatWorker` handles business logic side-effects.
+
+### Detailed Message Flow
+
+The messaging system follows a strict **Local-First** and **Socket-First** approach, bypassing traditional REST APIs for sending messages to ensure speed and offline capability.
+
+1.  **User Sends Message (`MessageBar.tsx`)**
+    *   User types a message and hits send.
+    *   The `useSendMessage` hook creates a message object with a temporary ID.
+
+2.  **Local Persistence (Client)**
+    *   The message is *immediately* saved to **Dexie.js** (IndexedDB) on the client.
+    *   **Status**: `pending` (Clock icon).
+    *   Ref: `client/hooks/useMessages.tsx`
+
+3.  **Queue & Network (Client)**
+    *   The `MessageQueueService` picks up the message.
+    *   It checks for network connectivity.
+    *   Ref: `client/services/message-queue.service.ts`
+
+4.  **Socket Transmission (Client -> Server)**
+    *   The client emits a `message:send` event to the server via Socket.io.
+    *   It waits for an **Acknowledgement (Ack)** from the server.
+
+5.  **Secure Processing (Server)**
+    *   **Validation**: The `SocketService` intercepts the event. It validates the payload using Zod.
+    *   **Authorization**: It compares `socket.user.waId` with `message.from` to prevent identity spoofing.
+    *   Ref: `server/src/lib/socket.ts`
+
+6.  **Relay & Background Tasks (Server)**
+    *   **Relay**: The server *immediately* broadcasts `message:created` to the recipient's socket room.
+    *   **Queue**: Simultaneously, it acts as a Producer and adds a job to the **BullMQ** `chat-events` queue.
+    *   **Ack**: The server sends a success acknowledgement back to the sender.
+
+7.  **Delivery & Read Receipts**
+    *   **Sender**: Upon receiving the Ack, updates local message status to `sent` (Single Tick).
+    *   **Recipient**: Upon receiving the socket event, saves message to their Dexie DB and emits `message:status-updated` (Delivered).
+    *   **Worker**: The `ChatWorker` processes the BullMQ job for tasks like Push Notifications.
 
 ### Message Flow Diagram
 
 ```mermaid
 sequenceDiagram
-    participant UA as User A (Sender)
-    participant S as Server (Socket.io)
-    participant UB as User B (Recipient)
+    participant UA as "User A (Sender)"
+    participant S as "Server (Socket)"
+    participant Q as "BullMQ (Redis)"
+    participant W as "Chat Worker"
+    participant UB as "User B (Recipient)"
 
-    Note over UA, UB: Local-First Messaging Flow
+    Note over UA, UB: Secure & Scalable Messaging Flow
 
     %% Sending Message
-    UA->>UA: Save to Dexie (Status: Sent 1-tick)
+    UA->>UA: Save to Dexie (Status: Pending)
     UA->>S: emit('message:send', msg)
     
-    %% Relaying
-    S->>UB: emit('message:created', msg)
+    %% Server Processing
+    activate S
+    S->>S: Validate Payload (Zod)
+    S->>S: Verify Sender Identity (Auth)
     
+    par Parallel Processing
+        S->>UB: emit('message:created', msg)
+        S->>Q: Add Job ('new_message')
+    end
+    
+    S-->>UA: Acknowledgement (Ack: OK)
+    deactivate S
+    
+    %% Client Updates
+    UA->>UA: Update Dexie (Status: Sent 1-tick)
+    
+    %% Background Work
+    Q->>W: Process Job
+    activate W
+    W->>W: Log Analytics
+    W->>W: Send Push Notification (FCM)
+    deactivate W
+    
+    %% Recipient Interaction
     alt User B is Online
         UB->>UB: Save to Dexie
         UB-->>S: emit('message:status-updated', Delivered)
         S-->>UA: emit('message:status-updated', Delivered)
         UA->>UA: Update Dexie (Status: Delivered 2-ticks)
-    else User B is Offline
-        Note right of S: Message dropped (No persistence)
-        Note right of UA: Message remains Sent (1-tick)
-        
-        %% Offline Retry Flow
-        UB->>S: Connects (emit 'connection')
-        S->>UA: emit('user:online', { waId: UB })
-        UA->>UA: Query Pending Messages
-        UA->>S: Re-emit('message:send', msg)
-        S->>UB: emit('message:created', msg)
-        UB-->>S: emit('message:status-updated', Delivered)
-        S-->>UA: emit('message:status-updated', Delivered)
     end
-
-    %% Read Receipt
-    Note over UB: User B opens chat
-    UB->>S: emit('messages:marked-as-read')
-    S->>UA: emit('messages:marked-as-read')
-    UA->>UA: Update Dexie (Status: Read Blue-ticks)
 ```

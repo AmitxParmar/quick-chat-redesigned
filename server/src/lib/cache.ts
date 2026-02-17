@@ -14,8 +14,8 @@ export const CacheKeys = {
     /** Conversation metadata: cache:conversation:meta:{conversationId} */
     CONVERSATION_META: (conversationId: string) => `cache:conversation:meta:${conversationId}`,
 
-    /** User's conversation list: cache:user:conversations:{waId} */
-    USER_CONVERSATIONS: (waId: string) => `cache:user:conversations:${waId}`,
+    /** User's conversation list: cache:user:conversations:{waId}:latest */
+    USER_CONVERSATIONS: (waId: string) => `cache:user:conversations:${waId}:latest`,
 
     /** User online status: cache:user:online:{waId} */
     USER_ONLINE: (waId: string) => `cache:user:online:${waId}`,
@@ -34,8 +34,8 @@ export const CacheTTL = {
     /** 30 minutes for conversation metadata */
     CONVERSATION_META: 30 * 60,
 
-    /** 5 minutes for user's conversation list */
-    USER_CONVERSATIONS: 5 * 60,
+    /** 60 seconds for user's conversation list (High frequency) */
+    USER_CONVERSATIONS: 60,
 
     /** 60 seconds for online status (refresh with heartbeat) */
     USER_ONLINE: 60,

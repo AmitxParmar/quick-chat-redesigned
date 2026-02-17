@@ -1,8 +1,13 @@
 "use client";
 import React from "react";
-import Conversations from "../conversations";
+import dynamic from "next/dynamic";
 import { useIsMobile } from "@/hooks/use-mobile";
 import useAuth from "@/hooks/useAuth";
+
+const Conversations = dynamic(() => import("../conversations"), {
+  ssr: false,
+  loading: () => <div className="border-r animate-pulse bg-muted/30" />,
+});
 
 const ChatLayout = ({ children }: { children: React.ReactNode }) => {
   const isMobile = useIsMobile();

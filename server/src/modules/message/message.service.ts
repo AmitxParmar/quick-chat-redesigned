@@ -255,6 +255,15 @@ export default class MessageService {
         // Emit message created event
         socketService.emitMessageCreated(conversationId, payload, [options.userWaId, data.to]);
 
+        // Update conversation lastMessage manually (if needed) or rely on socket to trigger client refresh
+        // But for caching, we MUST invalidate the conversation list for both users
+        // because the "lastMessage" and order changed.
+        await Promise.all([
+            cacheService.del(CacheKeys.USER_CONVERSATIONS(options.userWaId)),
+            cacheService.del(CacheKeys.USER_CONVERSATIONS(data.to)),
+        ]);
+        logger.debug(`[sendMessage] Invalidated conversation list cache for ${options.userWaId} and ${data.to}`);
+
         // Emit conversation updated event
         socketService.emitConversationUpdated(conversationId, conversation, [options.userWaId, data.to]);
 
