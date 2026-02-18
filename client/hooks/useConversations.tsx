@@ -13,11 +13,20 @@ import {
 import { useEffect, useRef, useCallback } from "react";
 import { io, type Socket } from "socket.io-client";
 import api from "@/lib/api";
-import { Conversation } from "@/types";
+import { Conversation, Message } from "@/types";
 import useAuth from "@/hooks/useAuth";
 import { SocketEvents } from "@/types/socket-events";
 
 import { socketService } from "@/services/socket.service";
+
+import {
+  updateConversationCache,
+  markConversationAsReadInCache,
+  updateConversationOnNewMessage,
+  removeConversationFromCache,
+  markMessagesAsReadInCache,
+  resetConversationUnreadCountInCache,
+} from "@/utils/query-cache-updates";
 
 // Global socket (via service)
 const getSocket = () => socketService.getSocket();
@@ -39,7 +48,7 @@ export function useConversations() {
     | null
   >(null);
   const messageCreatedListenerRef = useRef<
-    ((payload: { message: any; conversationId: string }) => void) | null
+    ((payload: { message: Message; conversationId: string }) => void) | null
   >(null);
   const processedMessageIdsRef = useRef<Set<string>>(new Set());
 
@@ -51,34 +60,8 @@ export function useConversations() {
 
     // Create a unique listener for conversation updates
     const onConversationUpdated = (conversation: Conversation) => {
-      console.log("Socket: conversation:updated received:", conversation.id);
-
       // Update the infinite query data
-      qc.setQueryData<InfiniteData<{ conversations: Conversation[]; nextCursor: string | null }>>(
-        ["conversations", user.waId],
-        (oldData) => {
-          if (!oldData) return oldData;
-
-          // 1. Remove conversation if it exists in any page
-          const newPages = oldData.pages.map((page) => ({
-            ...page,
-            conversations: page.conversations.filter((c) => c.id !== conversation.id),
-          }));
-
-          // 2. Add the updated/new conversation to the top of the first page
-          if (newPages.length > 0) {
-            newPages[0].conversations.unshift(conversation);
-          } else {
-            // Should not happen if data exists, but purely defensive
-            newPages.push({ conversations: [conversation], nextCursor: null });
-          }
-
-          return {
-            ...oldData,
-            pages: newPages,
-          };
-        }
-      );
+      updateConversationCache(qc, user.waId, conversation);
     };
 
     // Create a listener for messages marked as read
@@ -91,34 +74,11 @@ export function useConversations() {
 
       // Only update if this is for the current user
       if (payload.waId !== user.waId) {
-        console.log("[Socket] messages:marked-as-read ignored - different user");
         return;
       }
 
       // Update the conversations cache with the updated conversation
-      qc.setQueryData<InfiniteData<{ conversations: Conversation[]; nextCursor: string | null }>>(
-        ["conversations", user.waId],
-        (oldData) => {
-          if (!oldData) return oldData;
-
-          return {
-            ...oldData,
-            pages: oldData.pages.map((page) => ({
-              ...page,
-              conversations: page.conversations.map((convo) => {
-                if (convo.id === payload.conversationId) {
-                  return {
-                    ...convo,
-                    ...payload.conversation,
-                    unreadCount: payload.conversation.unreadCount
-                  };
-                }
-                return convo;
-              }),
-            })),
-          };
-        }
-      );
+      markConversationAsReadInCache(qc, user.waId, payload);
     };
 
     // Create a listener for new messages to update conversation list
@@ -132,60 +92,8 @@ export function useConversations() {
         processedMessageIdsRef.current.delete(message.id);
       }, 5000);
 
-      console.log("[Socket] message:created received in useConversations:", payload.conversationId);
 
-      qc.setQueryData<InfiniteData<{ conversations: Conversation[]; nextCursor: string | null }>>(
-        ["conversations", user.waId],
-        (oldData) => {
-          if (!oldData) return oldData;
-
-          const { message, conversationId } = payload;
-          let conversationToUpdate: Conversation | undefined;
-
-          // 1. Find and remove conversation if it exists
-          const newPages = oldData.pages.map((page) => {
-            const found = page.conversations.find((c) => c.id === conversationId);
-            if (found) {
-              conversationToUpdate = found;
-              return {
-                ...page,
-                conversations: page.conversations.filter((c) => c.id !== conversationId),
-              };
-            }
-            return page;
-          });
-
-          // 2. If we found it, update it and add to top.
-          // If NOT found, we ideally should fetch it, but for now we only update if existing.
-          if (conversationToUpdate) {
-            const updatedConversation = {
-              ...conversationToUpdate,
-              lastMessage: {
-                text: message.text,
-                timestamp: message.timestamp,
-                from: message.from,
-                status: message.status,
-              },
-              updatedAt: new Date().toISOString(),
-              // Increment unread count if message is NOT from us
-              unreadCount: message.from !== user.waId
-                ? (conversationToUpdate.unreadCount || 0) + 1
-                : conversationToUpdate.unreadCount
-            };
-
-            if (newPages.length > 0) {
-              newPages[0].conversations.unshift(updatedConversation as Conversation);
-            } else {
-              newPages.push({ conversations: [updatedConversation as Conversation], nextCursor: null });
-            }
-          }
-
-          return {
-            ...oldData,
-            pages: newPages,
-          };
-        }
-      );
+      updateConversationOnNewMessage(qc, user.waId, payload);
     };
 
     // Store the listener references for cleanup
@@ -259,42 +167,10 @@ export function useMarkAsRead(id: string) {
     },
     onSuccess: (_, { conversationId, waId }) => {
       // Update the messages cache directly instead of invalidating to prevent refetch
-      queryClient.setQueryData(["messages", conversationId], (oldData: any) => {
-        if (!oldData || !oldData.pages) return oldData;
-
-        const newPages = oldData.pages.map((page: any) => ({
-          ...page,
-          messages: page.messages.map((msg: any) => {
-            if (msg.to === waId && msg.status !== "read") {
-              return { ...msg, status: "read" };
-            }
-            return msg;
-          }),
-        }));
-
-        return {
-          ...oldData,
-          pages: newPages,
-        };
-      });
+      markMessagesAsReadInCache(queryClient, conversationId, waId);
 
       // Update conversations cache to reflect unread count changes
-      queryClient.setQueryData(
-        ["conversations", waId],
-        (oldConvo: Conversation[] | undefined) => {
-          if (!oldConvo) return oldConvo;
-
-          return oldConvo.map((convo) => {
-            if (convo.id === conversationId) {
-              return {
-                ...convo,
-                unreadCount: 0, // Reset unread count
-              };
-            }
-            return convo;
-          });
-        }
-      );
+      resetConversationUnreadCountInCache(queryClient, conversationId, waId);
     },
     onSettled: (_, __, variables) => {
       // Clear in-flight flag
@@ -405,46 +281,7 @@ export function useDeleteConversation() {
     }) => deleteConversation(conversationId, deleteType),
     onSuccess: (data, { conversationId, deleteType }) => {
       if (data.success) {
-        if (deleteType === "soft") {
-          // For soft delete, update the conversation in cache
-          queryClient.setQueryData(
-            ["conversations"],
-            (oldData: Conversation[] | undefined) => {
-              if (!oldData) return oldData;
-              return oldData.map((conv) =>
-                conv.id === conversationId
-                  ? { ...conv, isArchived: true }
-                  : conv
-              );
-            }
-          );
-        } else {
-          // For hard delete, remove the conversation from cache
-          queryClient.setQueryData(
-            ["conversations"],
-            (oldData: Conversation[] | undefined) => {
-              if (!oldData) return oldData;
-              return oldData.filter((conv) => conv.id !== conversationId);
-            }
-          );
-        }
-
-        // Also remove from conversations cache for specific user
-        queryClient.setQueryData(
-          ["conversations", data.data.waId],
-          (oldData: Conversation[] | undefined) => {
-            if (!oldData) return oldData;
-            if (deleteType === "soft") {
-              return oldData.map((conv) =>
-                conv.id === conversationId
-                  ? { ...conv, isArchived: true }
-                  : conv
-              );
-            } else {
-              return oldData.filter((conv) => conv.id !== conversationId);
-            }
-          }
-        );
+        removeConversationFromCache(queryClient, data.data.waId, conversationId, deleteType || "soft");
 
         // Invalidate related queries
         queryClient.invalidateQueries({ queryKey: ["conversations"] });

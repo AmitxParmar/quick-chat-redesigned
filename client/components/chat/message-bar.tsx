@@ -77,9 +77,8 @@ function MessageBar() {
         setMessage("");
         // Focus input after sending
         inputRef.current?.focus();
-        console.log("message sent successfully!");
+
       },
-      onError: (error) => console.log(error),
     });
   };
 

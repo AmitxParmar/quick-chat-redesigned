@@ -1,4 +1,5 @@
-import { db } from './db';
+
+import { getDb } from './db';
 import { Message, MessageWithQueue, QueueMetadata } from '@/types';
 
 class MessageDexieService {
@@ -6,21 +7,21 @@ class MessageDexieService {
      * Add or update a message in the local database
      */
     async addMessage(message: Message | MessageWithQueue) {
-        return await db.messages.put(message);
+        return await getDb().messages.put(message);
     }
 
     /**
      * Bulk add messages (e.g. from sync or initial load)
      */
     async addMessages(messages: Message[]) {
-        return await db.messages.bulkPut(messages);
+        return await getDb().messages.bulkPut(messages);
     }
 
     /**
      * Get messages for a conversation
      */
     async getMessages(conversationId: string, limit = 50, offset = 0) {
-        const messages = await db.messages
+        const messages = await getDb().messages
             .where('[conversationId+timestamp]')
             .between([conversationId, -Infinity], [conversationId, Infinity])
             .reverse() // Start from newest (largest timestamp)
@@ -36,7 +37,7 @@ class MessageDexieService {
      * Get most recent message for a conversation
      */
     async getLastMessage(conversationId: string) {
-        return await db.messages
+        return await getDb().messages
             .where('conversationId')
             .equals(conversationId)
             .reverse()
@@ -47,14 +48,14 @@ class MessageDexieService {
      * Update message status
      */
     async updateMessageStatus(id: string, status: string) {
-        return await db.messages.update(id, { status: status as any });
+        return await getDb().messages.update(id, { status: status as any });
     }
 
     /**
      * Mark all messages in a conversation as read for a specific recipient
      */
     async markMessagesAsRead(conversationId: string, userWaId: string) {
-        return await db.messages
+        return await getDb().messages
             .where('conversationId')
             .equals(conversationId)
             .filter(msg => msg.to === userWaId && msg.status !== 'read')
@@ -65,7 +66,7 @@ class MessageDexieService {
       * Get message count for a conversation
       */
     async getMessageCount(conversationId: string) {
-        return await db.messages.where('conversationId').equals(conversationId).count();
+        return await getDb().messages.where('conversationId').equals(conversationId).count();
     }
 
     /**
@@ -73,7 +74,7 @@ class MessageDexieService {
      * Used for retrying delivery when user comes online
      */
     async getPendingMessages(userWaId: string) {
-        return await db.messages
+        return await getDb().messages
             .filter(msg => msg.to === userWaId && msg.status === 'sent')
             .toArray();
     }
@@ -87,7 +88,7 @@ class MessageDexieService {
      * Used when app loads to restore pending messages to the queue
      */
     async getPendingMessagesForQueue(): Promise<MessageWithQueue[]> {
-        return await db.messages
+        return await getDb().messages
             .where('status')
             .anyOf(['pending', 'sending'])
             .toArray() as MessageWithQueue[];
@@ -100,9 +101,9 @@ class MessageDexieService {
         messageId: string,
         metadata: Partial<QueueMetadata>
     ): Promise<void> {
-        const message = await db.messages.get(messageId) as MessageWithQueue | undefined;
+        const message = await getDb().messages.get(messageId) as MessageWithQueue | undefined;
         if (message) {
-            await db.messages.update(messageId, {
+            await getDb().messages.update(messageId, {
                 queueMetadata: {
                     ...message.queueMetadata,
                     ...metadata
@@ -115,7 +116,7 @@ class MessageDexieService {
      * Clear queue metadata when message is successfully sent
      */
     async clearQueueMetadata(messageId: string): Promise<void> {
-        await db.messages.update(messageId, {
+        await getDb().messages.update(messageId, {
             queueMetadata: undefined
         });
     }
@@ -124,7 +125,7 @@ class MessageDexieService {
      * Increment retry count for a message
      */
     async incrementRetryCount(messageId: string): Promise<void> {
-        const message = await db.messages.get(messageId) as MessageWithQueue | undefined;
+        const message = await getDb().messages.get(messageId) as MessageWithQueue | undefined;
         if (message?.queueMetadata) {
             await this.updateQueueMetadata(messageId, {
                 retryCount: message.queueMetadata.retryCount + 1,
@@ -135,3 +136,4 @@ class MessageDexieService {
 }
 
 export const messageDexieService = new MessageDexieService();
+

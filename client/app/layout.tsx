@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     <html suppressHydrationWarning lang="en">
       <head>
-        <link rel="preload" as="image" href="/chat-bg.png" fetchPriority="high" />
+        <link rel="prefetch" as="image" href="/chat-bg.png" fetchPriority="high" />
       </head>
       <body
         className={`${inter.variable} font-inter antialiased max-h-screen h-screen`}

@@ -40,7 +40,6 @@ const ConversationList = () => {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
-  console.log("Error Contact List", error);
 
   // If contact list is open, render it instead of conversations
   if (isContactListOpen) {

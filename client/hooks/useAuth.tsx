@@ -65,7 +65,7 @@ export const useCurrentUser = (options?: { enabled?: boolean }) => {
     queryKey: authKeys.user(),
     queryFn: async () => {
       const data = await getProfile();
-      console.log("messages", data.data);
+
       return data.data;
     },
     retry: (failureCount, error: unknown) => {

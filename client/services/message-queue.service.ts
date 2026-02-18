@@ -32,7 +32,6 @@ class MessageQueueService {
             ...config
         };
 
-        console.log('[MessageQueueService] Initialized with config:', this.config);
     }
 
     /**
@@ -40,11 +39,8 @@ class MessageQueueService {
      */
     async initialize(): Promise<void> {
         if (this.initialized) {
-            console.log('[MessageQueueService] Already initialized');
             return;
         }
-
-        console.log('[MessageQueueService] Initializing...');
 
         // Create the AsyncQueuer instance
         this.createQueuer();
@@ -96,7 +92,6 @@ class MessageQueueService {
                 concurrency: this.config.concurrency,
                 started: true,
                 onSuccess: async (result, message) => {
-                    console.log('[MessageQueueService] Message sent successfully:', message.id);
                     await messageDexieService.updateMessageStatus(message.id, 'sent');
                     await messageDexieService.clearQueueMetadata(message.id);
                     this.emitStatusChange(message.id, 'sent');

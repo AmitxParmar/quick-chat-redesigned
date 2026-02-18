@@ -7,8 +7,8 @@ import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
 import { liveQuery } from "dexie";
 import { messageDexieService } from "@/services/message.dexie.service";
-import { v4 as uuidv4 } from "uuid";
 import useAuth from "./useAuth";
+import { createOutboundMessage } from "@/utils/message-factory";
 
 /**
  * Retrieves the current socket instance from the socket service.
@@ -232,7 +232,6 @@ export function useSendMessage() {
     try {
       if (!user?.waId) throw new Error("User not authenticated");
 
-      const messageId = uuidv4();
       const conversationId = data.conversationId || "";
 
       if (!conversationId) {
@@ -240,26 +239,13 @@ export function useSendMessage() {
         return;
       }
 
-      const newMessage: MessageWithQueue = {
-        id: messageId,
+      const newMessage: MessageWithQueue = createOutboundMessage({
         conversationId,
+        text: data.text,
         from: user.waId,
         to: data.to,
-        text: data.text,
-        type: (data.type as any) || "text",
-        timestamp: Date.now(),
-        status: "pending", // Always start as pending
-        waId: user.waId,
-        direction: "outgoing",
-        contact: { name: "", waId: user.waId },
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        queueMetadata: {
-          retryCount: 0,
-          lastAttemptTimestamp: Date.now(),
-          enqueuedAt: Date.now()
-        }
-      };
+        type: data.type,
+      });
 
       // 1. Save to Dexie immediately with queue metadata
       await messageDexieService.addMessage(newMessage);

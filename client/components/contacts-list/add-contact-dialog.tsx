@@ -35,7 +35,6 @@ export default function AddContactDialog({
             setNickname("");
             onOpenChange(false);
         } catch (err: unknown) {
-            console.log("contacts error", err)
             const errorMessage =
                 err instanceof Error
                     ? err.message

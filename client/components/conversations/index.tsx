@@ -1,7 +1,11 @@
 import React from "react";
+import dynamic from "next/dynamic";
 import ContactHeader from "./conversation-list-header";
 import SearchBar from "./search-bar";
-import ConversationList from "./conversation-list";
+
+const ConversationList = dynamic(() => import("./conversation-list"), {
+  ssr: false,
+});
 
 const Conversations = () => {
   return (

@@ -1,15 +1,16 @@
-import MessageLoader from "../common/message-loader";
-import Image from "next/image";
-import MessageBubble from "./message-bubble";
+// Track previous scroll dimensions for restoration after loading older messages
 import { useMessages } from "@/hooks/useMessages";
 import { useAutoMarkAsRead } from "@/hooks/useConversations";
 import { memo, useMemo, useRef, useEffect, useCallback, useLayoutEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
+import Image from "next/image";
+import MessageLoader from "../common/message-loader";
+import MessageBubble from "./message-bubble";
 import useAuth from "./../../hooks/useAuth";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 import { useChatParams } from "@/hooks/use-chat-params";
+import { Button } from "@/components/ui/button";
+import { PlusCircle } from "lucide-react";
 
 /**
  * ChatContainer with virtualization and WhatsApp-like scroll behavior:
@@ -40,7 +41,7 @@ function ChatContainer() {
   });
 
   // Track previous scroll dimensions for restoration after loading older messages
-  const prevScrollHeightRef = useRef<number>(0);
+  // Track previous scroll dimensions for restoration after loading older messages
   const isLoadingMoreRef = useRef<boolean>(false);
 
   // Auto-scroll to bottom on initial load or NEW messages (at the end of the array)
@@ -90,10 +91,14 @@ function ChatContainer() {
       style={{
         overscrollBehaviorX: "none",
         WebkitOverflowScrolling: "touch",
-        overflowAnchor: "auto"
+        overflowAnchor: "auto",
+        clipPath: "inset(0)" // Creates a containing block for fixed children, clipping them to this container
       }}
     >
-      <div className="bg-gray-400 dark:bg-[url(/chat-bg.png)] bg-fixed fixed h-full w-full opacity-5 !z-0 pointer-events-none"></div>
+      {/* Hidden Image for Next.js preloading & caching optimization */}
+      <Image src="/chat-bg.png" alt="" width={1} height={1} priority className="sr-only" />
+      {/* Visible background: CSS handles tiling & fixed positioning naturally */}
+      <div className="bg-gray-400 dark:bg-[url(/chat-bg.png)] bg-fixed fixed h-full w-full opacity-5 !z-0 pointer-events-none" />
 
       <div className="flex items-center justify-center py-2 z-10 top-0">
         <Button

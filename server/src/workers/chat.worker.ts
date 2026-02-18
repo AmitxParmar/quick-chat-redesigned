@@ -2,6 +2,8 @@
 import { Worker, Job } from 'bullmq';
 import { QUEUE_NAMES, redisConnection } from '@/lib/queue';
 import logger from '@/lib/logger';
+import { notificationService } from '@/services/notification.service';
+import { analyticsService } from '@/services/analytics.service';
 
 // Job interface
 interface ChatJobData {
@@ -18,10 +20,25 @@ const processor = async (job: Job<ChatJobData>) => {
     try {
         switch (type) {
             case 'new_message':
-                // TODO: Implement Push Notifications (FCM/OneSignal)
-                // TODO: Implement Analytics logging
-                // For now, just log the event
-                logger.info(`New message processed: ${payload.message.id}`);
+                const msg = payload.message;
+                // 1. Send Push Notification to recipient
+                // We only send if the user is not in the active chat (handled by client status usually, 
+                // but for simplicity we send 'data' messages that client handles)
+                await notificationService.sendPushNotification(
+                    msg.to,
+                    `New message from ${msg.contact?.name || msg.from}`,
+                    msg.text
+                );
+
+                // 2. Track Analytics
+                await analyticsService.trackEvent('message_sent', {
+                    messageId: msg.id,
+                    senderId: msg.from,
+                    type: msg.type,
+                    timestamp: Date.now()
+                });
+
+                logger.info(`New message processed: ${msg.id}`);
                 break;
 
             case 'message_status':

@@ -51,7 +51,7 @@ const ContactList = () => {
   const setContactListOpen = useUIStore((state) => state.setContactListOpen);
   const setActiveChatUser = useUserStore((state) => state.setActiveChatUser);
   const router = useRouter();
-  console.log(allContacts);
+
   // Add Contact Dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
