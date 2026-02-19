@@ -88,12 +88,11 @@ export const useCurrentUser = (options?: { enabled?: boolean }) => {
 const useAuth = () => {
   const router = useRouter();
   const pathname = usePathname();
-  const isLoginPage = pathname === "/login";
   const isPublicPage = pathname === "/login" || pathname === "/register";
   // Only fetch user if NOT on a public page to avoid api.ts interceptor redirecting
   // (since api.ts redirects on 401, and we expect 401 on public pages if not logged in)
   const userQuery = useCurrentUser({ enabled: !isPublicPage });
-  const isLoading = userQuery.isLoading;
+  const isLoading = userQuery.isPending;
   const isAuthenticated = !!(userQuery.data && !userQuery.error);
 
   // Check for authentication errors with proper typing
