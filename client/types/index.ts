@@ -38,7 +38,7 @@ export type Message = {
   to: string;
   text: string;
   timestamp: number;
-  status: "pending" | "sent" | "delivered" | "read" | "failed";
+  status: "pending" | "sent" | "delivered" | "read" | "failed" | "sending";
   type: "text" | "image" | "document" | "audio" | "video";
   waId: string;
   direction: "incoming" | "outgoing";

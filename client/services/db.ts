@@ -20,7 +20,7 @@ export class QuickChatDB extends Dexie {
             messages: 'id, conversationId, timestamp, [conversationId+timestamp], status',
         }).upgrade(tx => {
             // Migration: Add queue metadata to existing pending messages
-            return tx.table('messages').toCollection().modify((msg: any) => {
+            return tx.table('messages').toCollection().modify((msg: MessageWithQueue) => {
                 if (!msg.queueMetadata && (msg.status === 'pending' || msg.status === 'sending')) {
                     msg.queueMetadata = {
                         retryCount: 0,
