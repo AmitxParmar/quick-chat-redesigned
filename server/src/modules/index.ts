@@ -5,6 +5,7 @@ import message from './message/message.route';
 import conversation from './conversation/conversation.route';
 import contact from './contact/contact.route';
 import user from './user/user.route';
+import customers from './customers/customer.route';
 
 const router: Router = Router();
 
@@ -13,7 +14,9 @@ router.use('/messages', message);
 router.use('/conversations', conversation);
 router.use('/contacts', contact);
 router.use('/users', user);
-// router.use("/projects", projects);
+
+// --- Assignment: Customer Search & Orders ---
+router.use('/customers', customers);
 
 export default router;
 
