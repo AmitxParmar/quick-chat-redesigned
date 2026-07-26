@@ -105,15 +105,6 @@ class Environment implements IEnvironment {
   public isDev() {
     return this.env === Environments.DEV;
   }
-
-  public isStage() {
-    return this.env === Environments.STAGING;
-  }
-
-  public isTest() {
-    return this.env === Environments.TEST;
-  }
 }
 
-export { Environment };
 export default new Environment();

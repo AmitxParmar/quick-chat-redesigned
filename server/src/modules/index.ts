@@ -13,7 +13,6 @@ router.use('/messages', message);
 router.use('/conversations', conversation);
 router.use('/contacts', contact);
 router.use('/users', user);
-// router.use("/projects", projects);
 
 export default router;
 

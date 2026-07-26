@@ -1,12 +1,6 @@
 import { HttpStatusCode } from 'axios';
 
-export interface IApiError extends Error {
-  statusCode: number;
-  rawErrors?: string[];
-  code?: string;
-}
-
-export class ApiError extends Error implements IApiError {
+export class ApiError extends Error {
   statusCode: number;
   rawErrors: string[];
   code?: string;
@@ -26,12 +20,6 @@ export class ApiError extends Error implements IApiError {
 export class HttpBadRequestError extends ApiError {
   constructor(message: string, errors: string[], code?: string) {
     super(HttpStatusCode.BadRequest, message, errors, code);
-  }
-}
-
-export class HttpInternalServerError extends ApiError {
-  constructor(message: string, errors?: string[], code?: string) {
-    super(HttpStatusCode.InternalServerError, message, errors, code);
   }
 }
 

@@ -10,14 +10,8 @@ export enum SocketEvents {
     CONNECTION = 'connection',
     DISCONNECT = 'disconnect',
 
-    // Task events
-    TASK_CREATED = 'task:created',
-    TASK_UPDATED = 'task:updated',
-    TASK_DELETED = 'task:deleted',
-
     // Notification events
     NOTIFICATION = 'notification',
-    TASK_ASSIGNED = 'task:assigned',
 
     // Room events
     JOIN_ROOM = 'room:join',
@@ -27,14 +21,6 @@ export enum SocketEvents {
     MESSAGE_SEND = 'message:send',
     MESSAGE_STATUS_UPDATED = 'message:status-updated',
     MESSAGES_MARKED_AS_READ = 'messages:marked-as-read',
-}
-
-// Conversation events
-export interface TaskEventPayload {
-    taskId: string;
-    task?: unknown;
-    previousAssigneeId?: string;
-    newAssigneeId?: string;
 }
 
 export interface NotificationPayload {

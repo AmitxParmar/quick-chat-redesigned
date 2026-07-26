@@ -111,16 +111,3 @@ export class SearchMessagesDto {
     @Transform(({ value }) => Math.min(parseInt(value, 10) || 25, 100))
     limit?: number = 25;
 }
-
-/**
- * DTO for pagination query parameters
- */
-export class PaginationQueryDto {
-    @IsOptional()
-    @Transform(({ value }) => parseInt(value, 10) || 1)
-    page?: number = 1;
-
-    @IsOptional()
-    @Transform(({ value }) => Math.min(parseInt(value, 10) || 25, 100))
-    limit?: number = 25;
-}

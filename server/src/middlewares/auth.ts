@@ -3,6 +3,7 @@ import { type AuthRequest } from '@/types/auth.type';
 import jwtService from '@/lib/jwt';
 import authRepository from '@/modules/auth/auth.repository';
 import { HttpUnAuthorizedError } from '@/lib/errors';
+import logger from '@/lib/logger';
 
 export const verifyAuthToken = async (
   req: AuthRequest,
@@ -35,7 +36,7 @@ export const verifyAuthToken = async (
 
     // Attach user to request
     req.user = user;
-    console.log(`[AuthMiddleware] Authenticated User: ${user.waId} (${user.id})`);
+    logger.info(`[AuthMiddleware] Authenticated User: ${user.waId} (${user.id})`);
     next();
   } catch (error) {
     next(error);

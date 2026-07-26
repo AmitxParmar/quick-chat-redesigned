@@ -3,7 +3,7 @@ import Controller from './message.controller';
 import { verifyAuthToken } from '@/middlewares/auth';
 import RequestValidator from '@/middlewares/request-validator';
 import { messageLimiter, searchLimiter } from '@/middlewares/rate-limiter';
-import { SendMessageDto, UpdateMessageStatusDto, SearchMessagesDto } from '@/dto/message.dto';
+import { SendMessageDto, UpdateMessageStatusDto } from '@/dto/message.dto';
 
 const message: Router = Router();
 const controller = new Controller();

@@ -10,7 +10,6 @@ import environment from '@/lib/environment';
 import {
     SocketEvents,
     type AuthenticatedSocket,
-    type TaskEventPayload,
     type NotificationPayload,
 } from '@/types/socket.type';
 import { Conversation, Message } from '@prisma/client';
@@ -46,12 +45,6 @@ class SocketService {
             perMessageDeflate: false,
             httpCompression: false
         });
-
-        // Optimization: Discard the initial HTTP request reference to save memory
-        // This is safe since we don't rely on it (e.g. for express-session) past handshake
-        /*    this.io.engine.on("connection", (rawSocket: any) => {
-               rawSocket.request = null;
-           }); */
 
         // Setup Redis adapter for horizontal scaling (if REDIS_URL is configured)
         await this.setupRedisAdapter();
@@ -378,35 +371,6 @@ class SocketService {
     }
 
     /**
-     * Gets the Socket.io server instance
-     */
-    public getIO(): Server | null {
-        return this.io;
-    }
-
-    /**
-     * Sends a notification to a specific user
-     */
-    public sendNotificationToUser(userId: string, notification: NotificationPayload): void {
-        if (!this.io) return;
-        this.io.to(`user:${userId}`).emit(SocketEvents.NOTIFICATION, notification);
-        logger.info(`Sent notification to user ${userId}`);
-    }
-
-    /**
-     * Notifies a user when a task is assigned to them
-     */
-    public notifyTaskAssigned(userId: string, payload: TaskEventPayload): void {
-        if (!this.io) return;
-        this.io.to(`user:${userId}`).emit(SocketEvents.TASK_ASSIGNED, payload);
-        logger.info(`Notified user ${userId} of task assignment`);
-    }
-
-    /**
-     * Broadcasts a message created event to conversation room
-     * Client expectation: { message: Message; conversationId: string }
-     */
-    /**
      * Broadcasts a message created event to conversation room and participants
      */
     public emitMessageCreated(conversationId: string, payload: { message: Message; conversationId: string }, participants?: string[]): void {
@@ -428,8 +392,6 @@ class SocketService {
             // keeping global emit as safety net ONLY if no participants? 
             // Better to just Log warning and NOT emit globally to force migration
             logger.warn(`emitMessageCreated called without participants for ${conversationId} - skipping targeted emit`);
-            // Legacy global emit (remove this once verified)
-            // this.io.emit('message:created', payload); 
         }
     }
 
@@ -450,8 +412,6 @@ class SocketService {
             logger.info(`Emitted conversation:updated for conversation ${conversationId} to ${participants.length} participants`);
         } else {
             logger.warn(`emitConversationUpdated called without participants for ${conversationId}`);
-            // Fallback to global emit only if necessary during migration
-            // this.io.emit('conversation:updated', conversation);
         }
     }
 

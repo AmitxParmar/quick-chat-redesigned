@@ -205,7 +205,6 @@ export default class ConversationService {
 
         // Emit status updates for EACH updated message
         unreadMessages.forEach(msg => {
-            // logger.info(`[markAsRead] Emitting status update for message: ${msg.id}`);
             socketService.emitMessageStatusUpdated(conversationId, {
                 id: msg.id,
                 conversationId: msg.conversationId,

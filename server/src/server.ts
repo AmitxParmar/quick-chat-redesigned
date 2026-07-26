@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import App from './app';
 import socketService from './lib/socket';
 import prismaClient from '@/lib/prisma';
+import logger from '@/lib/logger';
 
 const app = new App();
 const httpServer = createServer(app.express);
@@ -10,7 +11,7 @@ const httpServer = createServer(app.express);
 (async () => {
   await socketService.initialize(httpServer);
 })().catch((e) => {
-  console.error('Failed to initialize Socket.io:', e);
+  logger.error('Failed to initialize Socket.io:', e);
 });
 
 // Connect Prisma
@@ -20,7 +21,7 @@ app.connectPrisma().catch((e) => {
 
 // Graceful shutdown handler
 const shutdown = async () => {
-  console.log('Shutting down gracefully...');
+  logger.info('Shutting down gracefully...');
   await socketService.shutdown();
   await prismaClient.$disconnect();
   process.exit(0);

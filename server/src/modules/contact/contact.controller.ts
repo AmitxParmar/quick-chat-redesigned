@@ -4,6 +4,7 @@ import ContactService from './contact.service';
 import { type CustomResponse } from '@/types/common.type';
 import { type AuthRequest } from '@/types/auth.type';
 import Api from '@/lib/api';
+import logger from '@/lib/logger';
 import { type PopulatedContact, type UserSearchResult } from './contact.repository';
 
 export default class ContactController extends Api {
@@ -50,7 +51,7 @@ export default class ContactController extends Api {
             }
 
             const { waId, nickname } = req.body;
-            console.log(`[ContactController] User ${req.user.waId} (${req.user.id}) Requesting to add contact: ${waId}`);
+            logger.info(`[ContactController] User ${req.user.waId} (${req.user.id}) Requesting to add contact: ${waId}`);
 
             const contact = await this.contactService.addContact(
                 req.user.id,

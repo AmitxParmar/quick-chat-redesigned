@@ -17,12 +17,4 @@ export interface AuthRequest extends Request {
     user?: Omit<User, 'passwordHash'>;
 }
 
-export interface SessionData {
-    userId: string;
-    refreshToken: string;
-    userAgent?: string;
-    ipAddress?: string;
-    expiresAt: Date;
-}
-
 export type SafeUser = Omit<User, 'passwordHash'>;
