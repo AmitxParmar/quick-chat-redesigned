@@ -112,22 +112,6 @@ class CacheService {
     }
 
     /**
-     * Delete multiple keys matching a pattern
-     * Note: Pattern-based deletion should be used sparingly
-     */
-    async delByPattern(pattern: string): Promise<boolean> {
-        try {
-            // Upstash doesn't support KEYS command directly for patterns
-            // For now, we'll handle this by explicit key deletion
-            logger.warn(`Pattern deletion not fully supported: ${pattern}`);
-            return true;
-        } catch (error) {
-            logger.error(`Cache DEL pattern error for ${pattern}:`, error);
-            return false;
-        }
-    }
-
-    /**
      * Push an item to the left of a list (newest first)
      */
     async lpush<T>(key: string, value: T): Promise<boolean> {

@@ -7,10 +7,6 @@ class AnalyticsService {
     async trackEvent(eventName: string, properties: Record<string, any>): Promise<void> {
         // In a real app, this would send data to Mixpanel/Amplitude
         // await mixpanel.track(eventName, properties);
-
-        // Simulating network delay
-        await new Promise(resolve => setTimeout(resolve, 50));
-
         logger.info(`[AnalyticsService] Tracked event: ${eventName}`, properties);
     }
 }

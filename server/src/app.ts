@@ -19,6 +19,7 @@ class App {
 
   constructor() {
     this.express = express();
+    this.express.set('trust proxy', 1);
     this.setMiddlewares();
     this.disableSettings();
     this.setRoutes();
@@ -31,10 +32,8 @@ class App {
 
     this.express.use(cors({
       origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or Postman)
-        if (!origin) return callback(null, true);
-
-        if (allowedOrigins.includes(origin) || environment.isDev()) {
+        if (!origin) return callback(new Error('No CORS origin'));
+        if (allowedOrigins.includes(origin)) {
           callback(null, true);
         } else {
           callback(new Error('Not allowed by CORS'));
@@ -42,12 +41,12 @@ class App {
       },
       credentials: true,
     }));
+    this.express.use(helmet());
     this.express.use(morgan('dev'));
     this.express.use(nocache());
-    this.express.use(express.json());
+    this.express.use(express.json({ limit: '100kb' }));
     this.express.use(express.urlencoded({ extended: true }));
     this.express.use(cookieParser());
-    this.express.use(helmet());
     this.express.use(apiLimiter);
     this.express.use(express.static('public'));
   }
@@ -70,7 +69,9 @@ class App {
   }
 
   private initializeDocs(): void {
-    expressJSDocSwagger(this.express)(expressJSDocSwaggerConfig);
+    if (!environment.isProd()) {
+      expressJSDocSwagger(this.express)(expressJSDocSwaggerConfig);
+    }
   }
 
   public async connectPrisma(): Promise<void> {

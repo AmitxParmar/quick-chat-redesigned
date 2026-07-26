@@ -8,7 +8,7 @@ RUN corepack enable
 FROM base AS builder
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 COPY . .
 RUN npx prisma generate
 RUN pnpm run build
@@ -26,8 +26,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package.json ./
 COPY public ./public
-RUN touch .env
+RUN chown -R node:node /app
 
+USER node
 
 EXPOSE 8000
 CMD ["node", "dist/index.cjs"]

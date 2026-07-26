@@ -30,10 +30,9 @@ export const messageLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => {
-        // Use user's waId for rate limiting (authenticated users only)
         const authReq = req as AuthRequest;
-        // Return waId if available, otherwise use 'anonymous' (IP-based limiting is disabled)
-        return authReq.user?.waId || 'anonymous';
+        if (authReq.user?.waId) return `user:${authReq.user.waId}`;
+        return `ip:${req.ip}`;
     },
     message: {
         status: 429,
@@ -55,7 +54,8 @@ export const searchLimiter = rateLimit({
     legacyHeaders: false,
     keyGenerator: (req) => {
         const authReq = req as AuthRequest;
-        return authReq.user?.waId || 'anonymous';
+        if (authReq.user?.waId) return `user:${authReq.user.waId}`;
+        return `ip:${req.ip}`;
     },
     message: {
         status: 429,

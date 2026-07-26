@@ -6,6 +6,7 @@ import jwtService from '@/lib/jwt';
 import authRepository from '@/modules/auth/auth.repository';
 import logger from '@/lib/logger';
 import cacheService from '@/lib/cache';
+import environment from '@/lib/environment';
 import {
     SocketEvents,
     type AuthenticatedSocket,
@@ -39,7 +40,7 @@ class SocketService {
     public async initialize(httpServer: HttpServer): Promise<Server> {
         this.io = new Server(httpServer, {
             cors: {
-                origin: process.env.CLIENT_URL || 'http://localhost:3000',
+                origin: environment.clientUrl,
                 credentials: true,
             },
             perMessageDeflate: false,

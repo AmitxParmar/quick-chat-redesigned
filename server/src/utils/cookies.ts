@@ -1,4 +1,3 @@
-import environment from '@/lib/environment';
 import type { Response, CookieOptions } from 'express';
 
 
@@ -6,8 +5,8 @@ export class CookieService {
     private getCookieOptions(maxAge?: number): CookieOptions {
         return {
             httpOnly: true,
-            secure: !environment.isDev(),
-            sameSite: environment.isDev() ? 'lax' : 'none',
+            secure: true,
+            sameSite: 'lax',
             maxAge,
             path: '/',
         };

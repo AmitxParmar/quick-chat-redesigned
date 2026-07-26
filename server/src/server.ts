@@ -1,6 +1,7 @@
 import { createServer } from 'http';
 import App from './app';
 import socketService from './lib/socket';
+import prismaClient from '@/lib/prisma';
 
 const app = new App();
 const httpServer = createServer(app.express);
@@ -21,6 +22,7 @@ app.connectPrisma().catch((e) => {
 const shutdown = async () => {
   console.log('Shutting down gracefully...');
   await socketService.shutdown();
+  await prismaClient.$disconnect();
   process.exit(0);
 };
 

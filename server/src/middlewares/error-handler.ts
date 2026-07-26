@@ -21,11 +21,12 @@ const errorHandler = (
 ) => {
   logger.error(`Request Error:
         \nError:\n${JSON.stringify(err)}
-        \nHeaders:\n${util.inspect(req.headers)}
         \nParams:\n${util.inspect(req.params)}
-        \nQuery:\n${util.inspect(req.query)}
-        \nBody:\n${util.inspect(req.body)}`);
+        \nQuery:\n${util.inspect(req.query)}`);
 
+  if (!environment.isProd()) {
+    logger.error(`Body:\n${util.inspect(req.body)}`);
+  }
   const status: number = err.statusCode ?? HttpStatusCode.InternalServerError;
   const errorBody: ErrorBody = {
     success: false,

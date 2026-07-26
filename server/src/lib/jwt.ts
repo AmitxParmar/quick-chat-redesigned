@@ -12,8 +12,10 @@ class JwtService {
     private readonly refreshExpiresIn: string;
 
     constructor() {
-        this.accessSecret = process.env.JWT_ACCESS_SECRET || 'access-secret-key';
-        this.refreshSecret = process.env.JWT_REFRESH_SECRET || 'refresh-secret-key';
+        if (!process.env.JWT_ACCESS_SECRET) throw new Error('JWT_ACCESS_SECRET is required');
+        if (!process.env.JWT_REFRESH_SECRET) throw new Error('JWT_REFRESH_SECRET is required');
+        this.accessSecret = process.env.JWT_ACCESS_SECRET;
+        this.refreshSecret = process.env.JWT_REFRESH_SECRET;
         this.accessExpiresIn = process.env.JWT_ACCESS_EXPIRY || '15m';
         this.refreshExpiresIn = process.env.JWT_REFRESH_EXPIRY || '7d';
     }
