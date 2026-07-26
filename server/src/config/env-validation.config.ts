@@ -15,9 +15,8 @@ const envValidationConfig = {
   JWT_REFRESH_SECRET: str(),
   JWT_ACCESS_EXPIRY: str({ default: '15m' }),
   JWT_REFRESH_EXPIRY: str({ default: '7d' }),
-  UPSTASH_REDIS_REST_URL: str({ desc: 'Upstash Redis REST URL' }),
-  UPSTASH_REDIS_REST_TOKEN: str({ desc: 'Upstash Redis REST Token' }),
+  UPSTASH_REDIS_REST_URL: str(),
+  UPSTASH_REDIS_REST_TOKEN: str(),
 };
 
 export default envValidationConfig;
-
