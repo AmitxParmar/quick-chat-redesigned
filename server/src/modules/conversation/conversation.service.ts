@@ -7,6 +7,7 @@ import socketService from '@/lib/socket';
 import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 
 import { normalizeWaId } from '@/utils/wa-id';
+import { SocketEvents } from '@/types/socket.type';
 
 export default class ConversationService {
     /**
@@ -177,7 +178,7 @@ export default class ConversationService {
                 to: waId,
                 status: { in: ['sent', 'delivered'] },
             },
-            select: { id: true, conversationId: true, status: true } // Select minimal fields
+            select: { id: true, conversationId: true, status: true, from: true, to: true }
         });
 
         logger.info(`[markAsRead] Found ${unreadMessages.length} unread messages for user ${waId} in conversation ${conversationId}`);
@@ -198,15 +199,17 @@ export default class ConversationService {
             `[markAsRead] Updated ${updateResult.count} messages to 'read' in conversation ${conversationId}`
         );
 
-        // Emit status updates for EACH updated message
-        unreadMessages.forEach(msg => {
-            socketService.emitMessageStatusUpdated(conversationId, {
-                id: msg.id,
-                conversationId: msg.conversationId,
-                status: 'read',
-                message: { ...msg, status: 'read' } as any,
-            });
-        });
+        // Emit bulk read receipt for ALL updated messages in one event
+        if (updateResult.count > 0) {
+            const participants = [unreadMessages[0].from, unreadMessages[0].to];
+            socketService.emitMessagesMarkedAsRead(conversationId, {
+                conversationId,
+                waId,
+                updatedMessages: updateResult.count,
+                conversation: conversation,
+            }, participants);
+        }
+        logger.info(`Emitted bulk read receipt for ${updateResult.count} messages in conversation ${conversationId}`);
 
         // Find latest message
         const lastMsg = await prisma.message.findFirst({

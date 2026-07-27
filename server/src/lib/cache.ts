@@ -93,33 +93,47 @@ export const CacheLimits = {
  */
 class CacheService {
     /**
+     * Execute a Redis operation with circuit breaker protection
+     */
+    private async _executeWithBreaker<T>(key: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+        if (cacheCircuitBreaker.isOpen()) {
+            logger.warn(`Cache circuit breaker OPEN, skipping operation for key: ${key}`);
+            return fallback;
+        }
+        try {
+            const result = await fn();
+            cacheCircuitBreaker.recordSuccess();
+            return result;
+        } catch (error) {
+            cacheCircuitBreaker.recordFailure();
+            logger.error(`Cache operation error for key ${key}:`, error);
+            return fallback;
+        }
+    }
+
+    /**
      * Get a value from cache
      */
     async get<T>(key: string): Promise<T | null> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             const value = await redis.get(key);
             if (value === null) return null;
 
-            // If it's already an object (Upstash auto-parses JSON), return it
             if (typeof value === 'object') return value as T;
 
-            // Try to parse if it's a string
             try {
                 return JSON.parse(value as string) as T;
             } catch {
                 return value as T;
             }
-        } catch (error) {
-            logger.error(`Cache GET error for key ${key}:`, error);
-            return null;
-        }
+        }, null);
     }
 
     /**
      * Set a value in cache with optional TTL
      */
     async set(key: string, value: unknown, ttlSeconds?: number): Promise<boolean> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             const serialized = typeof value === 'string' ? value : JSON.stringify(value);
 
             if (ttlSeconds) {
@@ -128,44 +142,35 @@ class CacheService {
                 await redis.set(key, serialized);
             }
             return true;
-        } catch (error) {
-            logger.error(`Cache SET error for key ${key}:`, error);
-            return false;
-        }
+        }, false);
     }
 
     /**
      * Delete a key from cache
      */
     async del(key: string): Promise<boolean> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             await redis.del(key);
             return true;
-        } catch (error) {
-            logger.error(`Cache DEL error for key ${key}:`, error);
-            return false;
-        }
+        }, false);
     }
 
     /**
      * Push an item to the left of a list (newest first)
      */
     async lpush<T>(key: string, value: T): Promise<boolean> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             const serialized = typeof value === 'string' ? value : JSON.stringify(value);
             await redis.lpush(key, serialized);
             return true;
-        } catch (error) {
-            logger.error(`Cache LPUSH error for key ${key}:`, error);
-            return false;
-        }
+        }, false);
     }
 
     /**
      * Get a range of items from a list
      */
     async lrange<T>(key: string, start: number, stop: number): Promise<T[]> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             const items = await redis.lrange(key, start, stop);
             return items.map((item) => {
                 if (typeof item === 'object') return item as T;
@@ -175,61 +180,46 @@ class CacheService {
                     return item as T;
                 }
             });
-        } catch (error) {
-            logger.error(`Cache LRANGE error for key ${key}:`, error);
-            return [];
-        }
+        }, []);
     }
 
     /**
      * Trim a list to a specific range (keep only items within range)
      */
     async ltrim(key: string, start: number, stop: number): Promise<boolean> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             await redis.ltrim(key, start, stop);
             return true;
-        } catch (error) {
-            logger.error(`Cache LTRIM error for key ${key}:`, error);
-            return false;
-        }
+        }, false);
     }
 
     /**
      * Set expiration on a key
      */
     async expire(key: string, seconds: number): Promise<boolean> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             await redis.expire(key, seconds);
             return true;
-        } catch (error) {
-            logger.error(`Cache EXPIRE error for key ${key}:`, error);
-            return false;
-        }
+        }, false);
     }
 
     /**
      * Check if a key exists
      */
     async exists(key: string): Promise<boolean> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             const result = await redis.exists(key);
             return result === 1;
-        } catch (error) {
-            logger.error(`Cache EXISTS error for key ${key}:`, error);
-            return false;
-        }
+        }, false);
     }
 
     /**
      * Increment a numeric value
      */
     async incr(key: string): Promise<number> {
-        try {
+        return this._executeWithBreaker(key, async () => {
             return await redis.incr(key);
-        } catch (error) {
-            logger.error(`Cache INCR error for key ${key}:`, error);
-            return 0;
-        }
+        }, 0);
     }
 
     // ============================================
@@ -291,13 +281,10 @@ class CacheService {
         conversationId: string,
         participantWaIds: string[]
     ): Promise<void> {
-        // Invalidate conversation metadata
-        await this.del(CacheKeys.CONVERSATION_META(conversationId));
-
-        // Invalidate each participant's conversation list
-        for (const waId of participantWaIds) {
-            await this.del(CacheKeys.USER_CONVERSATIONS(waId));
-        }
+        await Promise.all([
+            this.del(CacheKeys.CONVERSATION_META(conversationId)),
+            ...participantWaIds.map(waId => this.del(CacheKeys.USER_CONVERSATIONS(waId))),
+        ]);
     }
 
     /**
@@ -331,48 +318,10 @@ class CacheService {
         messageId: string,
         newStatus: string
     ): Promise<boolean> {
+        // Ponytail: Invalidate cache on status update instead of in-place mutation.
+        // This avoids the lrange/lset race condition and is simpler.
         const key = CacheKeys.MESSAGES_RECENT(conversationId);
-
-        try {
-            // 1. Get all cached messages (usually limited to 100)
-            // We need to fetch all to find the index
-            const messages = await this.lrange<any>(key, 0, -1);
-            logger.debug(`[Cache] Found ${messages.length} messages in cache key ${key}`);
-
-            if (messages.length === 0) {
-                logger.warn(`[Cache] cache empty for ${key}, cannot update message ${messageId}`);
-                return false;
-            }
-
-            // 2. Find the message index
-            const index = messages.findIndex((msg) => msg.id === messageId);
-            logger.debug(`[Cache] Message ${messageId} found at index ${index}`);
-
-            if (index === -1) {
-                logger.warn(`[Cache] Message ${messageId} not found in cache for update. Messages in cache: ${messages.map(m => m.id).join(', ')}`);
-                return false;
-            }
-
-            // 3. Update the status in memory
-            const messageToUpdate = messages[index];
-            const oldStatus = messageToUpdate.status;
-            messageToUpdate.status = newStatus;
-
-            // 4. Update the specific item in Redis list
-            // LSET key index value
-            const serialized = JSON.stringify(messageToUpdate);
-            await redis.lset(key, index, serialized);
-
-            logger.debug(`[Cache] Updated message ${messageId} status from ${oldStatus} to ${newStatus} in cache at index ${index}`);
-
-            // 5. Refresh TTL
-            await this.expire(key, CacheTTL.MESSAGES_RECENT);
-
-            return true;
-        } catch (error) {
-            logger.error(`Failed to update message status in cache for ${messageId}:`, error);
-            return false;
-        }
+        return this.del(key);
     }
 }
 

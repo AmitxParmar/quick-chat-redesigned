@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import prisma from '@/lib/prisma';
 import { normalizeWaId } from '@/utils/wa-id';
 import type { Message, Conversation, User, MessageStatus, Prisma } from '@prisma/client';
@@ -128,9 +129,10 @@ export class MessageRepository {
 
         // Create or update conversation
         if (!conversation) {
+            const newConversationId = randomUUID();
             conversation = await prisma.conversation.create({
                 data: {
-                    conversationId: '', // Temporary — updated below
+                    conversationId: newConversationId,
                     participants: [
                         {
                             waId: fromId,
@@ -151,12 +153,6 @@ export class MessageRepository {
                     },
                     unreadCount: 1,
                 },
-            });
-
-            // Set conversationId to match the generated id (required by @unique)
-            conversation = await prisma.conversation.update({
-                where: { id: conversation.id },
-                data: { conversationId: conversation.id },
             });
         }
 
@@ -203,6 +199,9 @@ export class MessageRepository {
         messageId: string,
         status: MessageStatus
     ): Promise<Message | null> {
+        const existing = await prisma.message.findUnique({ where: { id: messageId }, select: { id: true } });
+        if (!existing) return null;
+
         return prisma.message.update({
             where: { id: messageId },
             data: { status },
@@ -220,6 +219,7 @@ export class MessageRepository {
 
         const conversation = await prisma.conversation.findUnique({
             where: { id: conversationId },
+            select: { participants: true },
         });
 
         if (!conversation || !conversation.participants) return false;
@@ -231,17 +231,13 @@ export class MessageRepository {
      * Resolves conversationId (handles both ObjectId and unique conversationId field)
      */
     public async resolveConversationId(conversationId: string): Promise<string | null> {
-        // Try to find by ID first
-        let conversation = await prisma.conversation.findUnique({
-            where: { id: conversationId },
-            select: { id: true },
-        });
-
-        if (conversation) return conversation.id;
-
-        // Try to find by the conversationId field
-        conversation = await prisma.conversation.findUnique({
-            where: { conversationId },
+        const conversation = await prisma.conversation.findFirst({
+            where: {
+                OR: [
+                    { id: conversationId },
+                    { conversationId },
+                ],
+            },
             select: { id: true },
         });
 

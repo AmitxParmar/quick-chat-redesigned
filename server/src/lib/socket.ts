@@ -7,6 +7,7 @@ import authRepository from '@/modules/auth/auth.repository';
 import logger from '@/lib/logger';
 import cacheService from '@/lib/cache';
 import environment from '@/lib/environment';
+import { chatQueue } from '@/lib/queue';
 import {
     SocketEvents,
     type AuthenticatedSocket,
@@ -266,8 +267,6 @@ class SocketService {
                 this.emitMessageCreated(conversationId, { message, conversationId }, participants);
 
                 // 2. Offload to Queue (Scalability)
-                // Late bind queue to avoid circular dependencies if possible, or just import
-                const { chatQueue } = await import('@/lib/queue');
                 chatQueue.add('new_message', {
                     type: 'new_message',
                     payload: payload
@@ -333,7 +332,9 @@ class SocketService {
 
         // Set initial online status
         if (userWaId) {
-            cacheService.setUserOnline(userWaId, true);
+            cacheService.setUserOnline(userWaId, true).catch(err =>
+                logger.error(`Failed to set online status for ${userWaId}:`, err)
+            );
             this.io?.emit('user:online', { waId: userWaId });
         }
     }
@@ -348,18 +349,22 @@ class SocketService {
         this.heartbeatInterval = setInterval(async () => {
             if (!this.io) return;
 
-            const sockets = this.io.sockets.sockets;
-            const waIds: string[] = [];
+            try {
+                const sockets = this.io.sockets.sockets;
+                const waIds: string[] = [];
 
-            for (const [_, socket] of sockets) {
-                const authSocket = socket as unknown as AuthenticatedSocket;
-                if (authSocket.user?.waId) {
-                    waIds.push(authSocket.user.waId);
+                for (const [, socket] of sockets) {
+                    const authSocket = socket as unknown as AuthenticatedSocket;
+                    if (authSocket.user?.waId) {
+                        waIds.push(authSocket.user.waId);
+                    }
                 }
-            }
 
-            // Batch refresh in parallel
-            await Promise.all(waIds.map(waId => cacheService.setUserOnline(waId, true)));
+                // Batch refresh in parallel
+                await Promise.all(waIds.map(waId => cacheService.setUserOnline(waId, true)));
+            } catch (e) {
+                logger.error('Heartbeat failed:', e);
+            }
         }, 30000);
     }
 

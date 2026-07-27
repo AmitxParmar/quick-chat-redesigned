@@ -3,6 +3,7 @@ import { MessageStatus, type Message } from '@prisma/client';
 import { HttpNotFoundError, HttpBadRequestError, HttpForbiddenError, HttpConflictError } from '@/lib/errors';
 import logger from '@/lib/logger';
 import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
+import socketService from '@/lib/socket';
 
 export interface MessageServiceOptions {
     userId?: string;
@@ -244,16 +245,15 @@ export default class MessageService {
         );
 
         // Emit socket events for real-time updates
-        const socketService = (await import('@/lib/socket')).default;
         const conversationId = conversation.id;
 
-        const payload = {
+        const socketPayload = {
             message,
             conversationId,
         };
 
         // Emit message created event
-        socketService.emitMessageCreated(conversationId, payload, [options.userWaId, data.to]);
+        socketService.emitMessageCreated(conversationId, socketPayload, [options.userWaId, data.to]);
 
         // Update conversation lastMessage manually (if needed) or rely on socket to trigger client refresh
         // But for caching, we MUST invalidate the conversation list for both users
@@ -303,16 +303,14 @@ export default class MessageService {
         logger.info(`Message ${messageId} status updated to ${status}`);
 
         // Emit socket event for real-time status update
-        const socketService = (await import('@/lib/socket')).default;
-
-        const payload = {
+        const socketPayload = {
             id: updatedMessage.id, // Client expects 'id'
             conversationId: updatedMessage.conversationId,
             status: updatedMessage.status,
             message: updatedMessage,
         };
 
-        socketService.emitMessageStatusUpdated(updatedMessage.conversationId, payload, [updatedMessage.from, updatedMessage.to]);
+        socketService.emitMessageStatusUpdated(updatedMessage.conversationId, socketPayload, [updatedMessage.from, updatedMessage.to]);
 
         // Update cache in background
         cacheService.updateMessageStatusInCache(
@@ -340,7 +338,7 @@ export default class MessageService {
     ): Promise<void> {
         try {
             // Store messages in cache (newest first)
-            for (const message of messages.reverse()) {
+            for (const message of [...messages].reverse()) {
                 await cacheService.cacheRecentMessage(conversationId, message);
             }
 
