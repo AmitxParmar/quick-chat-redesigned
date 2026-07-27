@@ -24,12 +24,7 @@ export interface AuthResult {
   };
 }
 
-/**
- * Normalize WhatsApp ID (add 91 prefix if missing)
- */
-const normalizeWaId = (waId: string): string => {
-  return waId.startsWith('91') ? waId : `91${waId}`;
-};
+import { normalizeWaId } from '@/utils/wa-id';
 
 const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 

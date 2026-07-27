@@ -6,12 +6,7 @@ import logger from '@/lib/logger';
 import socketService from '@/lib/socket';
 import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 
-/**
- * Normalize WhatsApp ID (add 91 prefix if missing)
- */
-const normalizeWaId = (waId: string): string => {
-    return waId?.startsWith('91') ? waId.trim() : `91${waId?.trim()}`;
-};
+import { normalizeWaId } from '@/utils/wa-id';
 
 export default class ConversationService {
     /**

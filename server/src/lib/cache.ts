@@ -2,8 +2,44 @@ import { redis } from './redis';
 import logger from './logger';
 
 /**
- * Cache key prefixes for different data types
+ * Circuit breaker state
  */
+const cacheCircuitBreaker = {
+    failureCount: 0,
+    lastFailureTime: 0,
+    state: 'CLOSED' as 'CLOSED' | 'OPEN' | 'HALF_OPEN',
+    threshold: 5,
+    timeout: 30000, // 30 seconds
+
+    isOpen() {
+        if (this.state === 'OPEN') {
+            if (Date.now() - this.lastFailureTime > this.timeout) {
+                this.state = 'HALF_OPEN';
+                return false;
+            }
+            return true;
+        }
+        return false;
+    },
+
+    recordFailure() {
+        this.failureCount++;
+        this.lastFailureTime = Date.now();
+        if (this.failureCount >= this.threshold) {
+            this.state = 'OPEN';
+            logger.warn('Cache circuit breaker opened due to failures');
+        }
+    },
+
+    recordSuccess() {
+        if (this.state === 'HALF_OPEN') {
+            this.state = 'CLOSED';
+            logger.info('Cache circuit breaker recovered');
+        }
+        this.failureCount = 0;
+    },
+};
+
 export const CacheKeys = {
     /** Recent messages for a conversation: cache:messages:recent:{conversationId} */
     MESSAGES_RECENT: (conversationId: string) => `cache:messages:recent:${conversationId}`,
@@ -237,15 +273,14 @@ class CacheService {
         if (!correlationId) return false;
 
         const key = CacheKeys.MESSAGE_IDEMPOTENCY(correlationId);
-        const exists = await this.exists(key);
+        // Atomic SETNX: set only if not exists, returns 'OK' if set
+        const wasSet = await redis.set(key, Date.now(), { ex: CacheTTL.MESSAGE_IDEMPOTENCY, nx: true });
 
-        if (exists) {
+        if (!wasSet) {
             logger.warn(`Duplicate message detected with correlationId: ${correlationId}`);
             return true;
         }
 
-        // Mark this correlation ID as processed
-        await this.set(key, Date.now(), CacheTTL.MESSAGE_IDEMPOTENCY);
         return false;
     }
 

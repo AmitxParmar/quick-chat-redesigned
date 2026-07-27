@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma';
+import { normalizeWaId } from '@/utils/wa-id';
 import type { Message, Conversation, User, MessageStatus, Prisma } from '@prisma/client';
 
 /**
@@ -59,8 +60,6 @@ export class MessageRepository {
         const limit = Math.min(searchQuery.limit || 25, 100);
         const skip = (page - 1) * limit;
 
-        const normalizeWaId = (id: string) =>
-            id?.startsWith('91') ? id.trim() : `91${id.trim()}`;
         const currentWaId = normalizeWaId(userWaId);
 
         // Build where clause
@@ -104,9 +103,6 @@ export class MessageRepository {
         senderUser: User;
         receiverUser: User;
     }): Promise<{ message: Message; conversation: Conversation }> {
-        const normalizeWaId = (id: string) =>
-            id?.startsWith('91') ? id.trim() : `91${id.trim()}`;
-
         const fromId = normalizeWaId(data.from);
         const toId = normalizeWaId(data.to);
 
@@ -220,8 +216,6 @@ export class MessageRepository {
         userWaId: string,
         conversationId: string
     ): Promise<boolean> {
-        const normalizeWaId = (id: string) =>
-            id?.startsWith('91') ? id.trim() : `91${id.trim()}`;
         const currentWaId = normalizeWaId(userWaId);
 
         const conversation = await prisma.conversation.findUnique({

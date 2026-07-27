@@ -17,8 +17,6 @@ export interface IEnvironment {
   setEnvironment: (env?: Environments) => void;
   isProd: () => boolean;
   isDev: () => boolean;
-  isTest: () => boolean;
-  isStage: () => boolean;
 }
 
 class Environment implements IEnvironment {

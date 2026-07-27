@@ -63,6 +63,24 @@ export class ContactRepository {
     }
 
     /**
+     * Find multiple users by IDs (batch query)
+     */
+    public async findUsersByIds(userIds: string[]) {
+        return prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: {
+                id: true,
+                waId: true,
+                name: true,
+                profilePicture: true,
+                status: true,
+                isOnline: true,
+                lastSeen: true,
+            },
+        });
+    }
+
+    /**
      * Find user by waId
      */
     public async findUserByWaId(waId: string) {

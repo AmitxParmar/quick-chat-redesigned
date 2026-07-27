@@ -217,20 +217,28 @@ class SocketService {
         socket.on(SocketEvents.DISCONNECT, async () => {
             logger.info(`User disconnected: ${userId}`);
             if (userWaId) {
-                await cacheService.setUserOnline(userWaId, false);
-                this.io?.emit('user:offline', { waId: userWaId, lastSeen: Date.now() });
+                try {
+                    await cacheService.setUserOnline(userWaId, false);
+                    this.io?.emit('user:offline', { waId: userWaId, lastSeen: Date.now() });
+                } catch (e) {
+                    logger.error(`Error handling disconnect for ${userWaId}:`, e);
+                }
             }
         });
 
         // Handle online status check
         socket.on('user:get-status', async (payload: { waId: string }) => {
             if (!payload?.waId) return;
-            const isOnline = await cacheService.getUserOnlineStatus(payload.waId);
-            socket.emit('user:status', {
-                waId: payload.waId,
-                isOnline,
-                lastSeen: isOnline ? Date.now() : undefined
-            });
+            try {
+                const isOnline = await cacheService.getUserOnlineStatus(payload.waId);
+                socket.emit('user:status', {
+                    waId: payload.waId,
+                    isOnline,
+                    lastSeen: isOnline ? Date.now() : undefined
+                });
+            } catch (e) {
+                logger.error(`Error checking status for ${payload.waId}:`, e);
+            }
         });
 
         // Handle message sending (Direct Socket Relay - No DB)
@@ -340,17 +348,18 @@ class SocketService {
         this.heartbeatInterval = setInterval(async () => {
             if (!this.io) return;
 
-            // Optimised heartbeat: iterate only over LOCAL sockets
-            // fetchSockets() broadcasts to all nodes which is expensive and unnecessary for this local check
             const sockets = this.io.sockets.sockets;
+            const waIds: string[] = [];
 
             for (const [_, socket] of sockets) {
                 const authSocket = socket as unknown as AuthenticatedSocket;
                 if (authSocket.user?.waId) {
-                    // Refresh TTL
-                    await cacheService.setUserOnline(authSocket.user.waId, true);
+                    waIds.push(authSocket.user.waId);
                 }
             }
+
+            // Batch refresh in parallel
+            await Promise.all(waIds.map(waId => cacheService.setUserOnline(waId, true)));
         }, 30000);
     }
 

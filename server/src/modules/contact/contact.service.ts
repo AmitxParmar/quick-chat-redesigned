@@ -3,14 +3,8 @@ import contactRepository, {
     type UserSearchResult,
 } from './contact.repository';
 import { HttpBadRequestError, HttpNotFoundError } from '@/lib/errors';
+import { normalizeWaId } from '@/utils/wa-id';
 import logger from '@/lib/logger';
-
-/**
- * Normalize WhatsApp ID (add 91 prefix if missing)
- */
-const normalizeWaId = (waId: string): string => {
-    return waId?.startsWith('91') ? waId.trim() : `91${waId?.trim()}`;
-};
 
 export default class ContactService {
     /**
@@ -19,17 +13,17 @@ export default class ContactService {
     public async getContacts(
         userId: string
     ): Promise<Record<string, PopulatedContact[]>> {
-        // Get all contacts for user
         const contacts = await contactRepository.findByUserId(userId);
 
-        // Populate user data for each contact
+        // Batch fetch all contact users in one query (fixes N+1)
+        const contactUserIds = contacts.map(c => c.contactUserId);
+        const contactUsers = await contactRepository.findUsersByIds(contactUserIds);
+        const userMap = new Map(contactUsers.map(u => [u.id, u]));
+
         const transformedContacts: PopulatedContact[] = [];
 
         for (const contact of contacts) {
-            const contactUser = await contactRepository.findUserById(
-                contact.contactUserId
-            );
-
+            const contactUser = userMap.get(contact.contactUserId);
             if (contactUser) {
                 transformedContacts.push({
                     id: contact.id,

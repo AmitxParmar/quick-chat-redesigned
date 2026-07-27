@@ -7,7 +7,7 @@ const publicRoutes = ['/login', '/register'];
 // Routes that require authentication
 const protectedRoutes = ['/'];
 
-export function proxy(request: NextRequest) {
+export default function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const accessToken = request.cookies.get('access_token')?.value;
 

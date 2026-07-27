@@ -16,7 +16,8 @@ const httpServer = createServer(app.express);
 
 // Connect Prisma
 app.connectPrisma().catch((e) => {
-  throw e;
+  logger.error('Failed to connect to database:', e);
+  process.exit(1);
 });
 
 // Graceful shutdown handler

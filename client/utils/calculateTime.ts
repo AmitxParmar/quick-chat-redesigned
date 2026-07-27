@@ -20,17 +20,17 @@ export const calculateTime = (
 
   // Check if it's today, tomorrow, or more than one day ago
   if (
-    inputDate.getUTCDate() === currentDate.getUTCDate() &&
-    inputDate.getUTCMonth() === currentDate.getUTCMonth() &&
-    inputDate.getUTCFullYear() === currentDate.getUTCFullYear()
+    inputDate.getDate() === currentDate.getDate() &&
+    inputDate.getMonth() === currentDate.getMonth() &&
+    inputDate.getFullYear() === currentDate.getFullYear()
   ) {
     // Today: Convert to AM/PM format
     const ampmTime = inputDate.toLocaleTimeString("en-US", timeFormat);
     return ampmTime;
   } else if (
-    inputDate.getUTCDate() === currentDate.getUTCDate() - 1 &&
-    inputDate.getUTCMonth() === currentDate.getUTCMonth() &&
-    inputDate.getUTCFullYear() === currentDate.getUTCFullYear()
+    inputDate.getDate() === currentDate.getDate() - 1 &&
+    inputDate.getMonth() === currentDate.getMonth() &&
+    inputDate.getFullYear() === currentDate.getFullYear()
   ) {
     // Tomorrow: Show "Yesterday"
     return "Yesterday";

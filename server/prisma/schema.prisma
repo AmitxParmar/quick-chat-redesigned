@@ -93,6 +93,9 @@ model Message {
     updatedAt DateTime @updatedAt
 
     @@index([conversationId, timestamp])
+    @@index([from])
+    @@index([to])
+    @@index([status])
     @@map("processed_messages")
 }
 
@@ -116,6 +119,8 @@ model Conversation {
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
+    @@index([updatedAt])
 }
 
 // Embedded types for Conversation
