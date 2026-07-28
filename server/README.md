@@ -1,328 +1,223 @@
-# Quick Chat - Backend API
+# Server
 
-A production-ready real-time messaging API built with **Node.js**, **TypeScript**, **Express**, and **MongoDB** (Prisma ORM). Features Socket.io integration, JWT authentication, and enterprise-grade performance optimizations for 10k+ concurrent users.
+> Node.js + Express backend for Quick Chat.
 
-## 🚀 Key Features
+[← Client](client/README.md) · [Documentation Index →](docs/INDEX.md)
 
-- **Real-Time Messaging**: Instant message delivery with Socket.io and delivery status tracking (Sent/Delivered/Read)
-- **Secure Authentication**: JWT + bcrypt with HttpOnly cookies and token refresh
-- **Modular Architecture**: Feature-based structure with separation of concerns
-- **Performance Optimized**: Circuit breaker patterns and Redis caching for scalability
-- **Enterprise Security**: Input validation, rate limiting, and connection verification
-- **Docker Ready**: Multi-stage builds with production optimizations
-- **API Documentation**: Swagger/OpenAPI support for self-documenting APIs
+## Tech Stack
 
----
+- **Runtime**: Node.js 22
+- **Framework**: Express
+- **Language**: TypeScript
+- **Database**: MongoDB (Prisma ORM)
+- **Cache**: Redis (Upstash)
+- **Realtime**: Socket.io with Redis Pub/Sub
+- **Queue**: BullMQ
+- **Validation**: Zod
+- **Auth**: JWT (access + refresh tokens)
 
-## 📋 Table of Contents
-
-- [Tech Stack](#-tech-stack)
-- [Prerequisites](#-prerequisites)
-- [Installation](#-installation)
-- [Environment Variables](#-environment-variables)
-- [Running the Application](#-running-the-application)
-- [Docker Deployment](#-docker-deployment)
-- [Architecture](#-architecture)
-- [API Endpoints](#-api-endpoints)
-
----
-
-## 🛠 Tech Stack
-
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **Runtime** | Node.js (v20+) | High-performance JavaScript runtime |
-| **Framework** | Express.js | RESTful API framework |
-| **Language** | TypeScript | Type safety and developer productivity |
-| **Database** | MongoDB | NoSQL document store |
-| **ORM** | Prisma | TypeScript-first database toolkit |
-| **Real-Time** | Socket.io | WebSocket for instant messaging |
-| **Authentication** | JWT + bcrypt | Secure authentication |
-| **Validation** | Zod | Runtime type validation |
-
----
-
-## ✅ Prerequisites
-
-- Node.js >= 18.0.0
-- pnpm (recommended) or npm
-- MongoDB instance (local or cloud)
-
----
-
-## 📦 Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd quick-chat/server
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-4. **Generate Prisma client**
-   ```bash
-   pnpm run prisma:generate
-   ```
-
----
-
-## 🔐 Environment Variables
-
-Create a `.env` file in the `server` directory:
-
-```env
-# Server Configuration
-NODE_ENV=development
-PORT=8000
-APP_BASE_URL=http://localhost
-
-# Database
-DATABASE_URL="mongodb://localhost:27017/quick-chat?authSource=admin"
-
-# Frontend URL (for CORS and WebSocket connections)
-CLIENT_URL=http://localhost:3000
-
-# JWT Security (Generate strong random strings in production)
-JWT_ACCESS_SECRET=your-access-secret
-JWT_REFRESH_SECRET=your-refresh-secret
-JWT_ACCESS_EXPIRY=15m
-JWT_REFRESH_EXPIRY=7d
-
-# Security
-BCRYPT_ROUNDS=12
-
-# Rate Limiting
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
-```
-
----
-
-## 🏃 Running the Application
-
-### Development Mode
-```bash
-pnpm run dev
-```
-Server starts at `http://localhost:8000`
-
-### Production Build
-```bash
-pnpm run build
-pnpm start
-```
-
-### Test Suite
-```bash
-pnpm run test
-pnpm run test:watch
-```
-
----
-
-## 🐳 Docker Deployment
-
-The application includes production-ready multi-stage Dockerfile optimizations.
-
-### Build & Run locally
-```bash
-# Build optimized production image
-docker build -t quick-chat-server .
-
-# Run container
-docker run -p 8000:8000 --env-file .env quick-chat-server
-```
-
-### Deploy on Render (Docker Runtime)
-1. Create a **New Web Service**.
-2. Connect your repository.
-3. Select **Docker** as the Runtime.
-4. Set **Root Directory** to `server`.
-5. Configure Environment Variables.
-6. Deploy!
-
-### Deploy on AWS ECS/EKS
-Refer to `/docker/` directory for Kubernetes deployment manifests and AWS-specific configurations.
-
----
-
-## 🏗 Architecture
-
-### Project Structure (Domain-Driven Design)
+## Project Structure
 
 ```
 server/
 ├── src/
-│   ├── modules/          # Feature modules
-│   │   ├── auth/         # Authentication Logic
-│   │   ├── user/         # User Management & Profile
-│   │   ├── message/      # Message handling & delivery
-│   │   ├── conversation/ # Chat management & participants
-│   │   └── contact/      # Contact syncing & discovery
-│   ├── lib/              # Cross-cutting concerns
-│   │   ├── prisma/        # Database utilities
-│   │   ├── socket/        # Real-time communication
-│   │   ├── logger/        # Structured logging
-│   │   ├── cache/         # Redis caching layer
-│   │   ├── errors/        # Custom error types
-│   │   └── types/         # TypeScript type definitions
-│   ├── middlewares/      # Express request/response handlers
-│   │   ├── auth.ts       # JWT authentication
-│   │   ├── rateLimit.ts  # Request rate limiting
-│   │   └── errorHandler.ts # Global error handling
-│   ├── config/           # Application configuration
-│   ├── app.ts            # Express app setup
-│   └── index.ts          # Entry point
+│   ├── lib/                # Core infrastructure
+│   │   ├── app.ts          # Express app setup
+│   │   ├── prisma.ts       # Database client
+│   │   ├── redis.ts        # Redis client
+│   │   ├── cache.ts        # Cache service
+│   │   ├── socket.ts       # Socket.io setup
+│   │   ├── queue.ts        # BullMQ queue
+│   │   └── environment.ts  # Env validation
+│   ├── modules/            # Feature modules
+│   │   ├── auth/           # Authentication
+│   │   ├── user/           # User management
+│   │   ├── message/        # Messages
+│   │   ├── conversation/   # Conversations
+│   │   └── contact/        # Contacts
+│   ├── middleware/          # Express middleware
+│   ├── types/              # TypeScript types
+│   ├── utils/              # Helper functions
+│   └── server.ts           # Entry point
 ├── prisma/
-│   └── schema.prisma     # Database schema with indexes
-└── Dockerfile            # Multi-stage production build
+│   ├── schema.prisma       # Database schema
+│   └── seed.ts             # Seed data
+├── Dockerfile
+└── tsconfig.json
 ```
 
-### Core Architecture Patterns
+## Module Structure
 
-1. **Circuit Breaker**: Redis integration with fallback error handling
-2. **Local-First**: Client-side message caching with server reconciliation
-3. **Event-Driven**: Socket.io for real-time bidirectional communication
-4. **Domain Separation**: Clear boundaries between auth, message, and conversation domains
-5. **Performance Optimized**: Connection pooling, query optimization, and caching layers
+Each module follows the same pattern:
 
----
+```
+module/
+├── *.controller.ts   # Request handling
+├── *.service.ts      # Business logic
+├── *.repository.ts   # Database queries
+├── *.route.ts        # Route definitions
+├── *.dto.ts          # Validation schemas
+└── *.types.ts        # TypeScript types
+```
 
-## � API Endpoints
+### Modules
 
-### Authentication
-- `POST /api/v1/auth/register` - Create new user account
-- `POST /api/v1/auth/login` - Authenticate user and get tokens
-- `POST /api/v1/auth/logout` - Invalidate tokens
-- `POST /api/v1/auth/refresh` - Refresh access token
-- `GET /api/v1/auth/me` - Get current user profile
+| Module | Responsibility |
+|--------|---------------|
+| `auth` | Login, register, token refresh, logout |
+| `user` | Profile management, push subscriptions |
+| `message` | Send, receive, status updates, history |
+| `conversation` | Create, list, read receipts, naming |
+| `contact` | Add, remove, search contacts |
 
-### Messages
-- `POST /api/v1/messages` - Send a new message (Socket.io event: `message:send`)
-- `GET /api/v1/messages/:conversationId` - Get conversation history with pagination
-- `GET /api/v1/messages/:messageId` - Get specific message details
-- `PUT /api/v1/messages/:messageId/status` - Update message status
+## Core Infrastructure
 
-### Conversations
-- `GET /api/v1/conversations` - Get user's conversation list
-- `GET /api/v1/conversations/:id` - Get conversation details
-- `POST /api/v1/conversations` - Create new conversation
-- `PUT /api/v1/conversations/:id/read` - Mark conversation as read
-- `DELETE /api/v1/conversations/:id` - Delete conversation
+### Express App (`lib/app.ts`)
 
-### Users
-- `GET /api/v1/users/search` - Search users by name or waId
-- `GET /api/v1/users/:id` - Get user profile by ID
+- Helmet security headers
+- CORS configuration
+- JSON body parsing (10KB limit)
+- Cookie parsing
+- Rate limiting middleware
+- Swagger UI (optional)
 
-### System
-- `GET /api/v1/health` - Health check endpoint
-- `GET /api/v1/metrics` - Application metrics (admin only)
+### Database (`lib/prisma.ts`)
 
-For full documentation, run the server and visit:
-`http://localhost:8000/v1/swagger`
+```typescript
+// Singleton Prisma client
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+});
+```
 
----
+### Cache (`lib/cache.ts`)
 
-## 🔒 Security Features
+```typescript
+// Cache-aside pattern with circuit breaker
+const cacheService = {
+  async get<T>(key: string): Promise<T | null> { ... },
+  async set(key: string, value: any, ttl: number): Promise<void> { ... },
+  async invalidate(...keys: string[]): Promise<void> { ... },
+};
+```
 
-1. **Authentication**: JWT with HttpOnly cookies, token refresh, secure password hashing
-2. **Authorization**: Role-based access control and conversation participant verification
-3. **Input Validation**: Zod schema validation for all API endpoints
-4. **Rate Limiting**: Express rate limiting to prevent abuse
-5. **CORS**: Strict origin validation for cross-origin requests
-6. **Secure Headers**: Helmet.js for security headers
-7. **Socket Security**: Identity verification and payload validation
-8. **Environment Isolation**: Different configurations for dev/staging/prod
+**Circuit Breaker:** Opens after 3 consecutive Redis failures, half-open after 30 seconds.
 
----
+### Socket.io (`lib/socket.ts`)
 
-## 📊 Monitoring & Observability
+```typescript
+// Redis adapter for horizontal scaling
+io.adapter(createAdapter(pubClient, subClient));
 
-### Logging
-- **Structured Logging**: Winston with JSON formatting
-- **Error Tracking**: Custom error classes with context
-- **Performance Metrics**: Request/response timing and error rates
-- **Debug Information**: Request details and stack traces
+// Room-based routing
+socket.join(`user:${userId}`);
+io.to(`user:${userId}`).emit('message:receive', message);
+```
 
-### Health Checks
-- **Process Health**: Node.js process monitoring
-- **Database Connectivity**: MongoDB connection status
-- **Cache Status**: Redis availability and performance
-- **Memory Usage**: Node.js heap monitoring
+### Queue (`lib/queue.ts`)
 
-### API Monitoring
-- **Request Tracking**: HTTP method, endpoint, and response time
-- **Error Tracking**: HTTP status codes and error types
-- **Performance Alerts**: Slow query detection and alerting
+```typescript
+// BullMQ for background jobs
+const chatQueue = new Queue('chat', { connection: redis });
+const chatWorker = new Worker('chat', processJob, { connection: redis });
+```
 
----
+## Database Schema
 
-## 🏆 Performance Optimizations
+### User
 
-1. **Database Optimization**: Prisma with query optimization and indexing strategy
-2. **Caching Layer**: Redis for frequently accessed data
-3. **Connection Management**: Connection pooling and reuse
-4. **Memory Management**: Efficient garbage collection and memory monitoring
-5. **Load Balancing**: Horizontal scaling support
-6. **Content Delivery**: CDN integration for static assets
+```prisma
+model User {
+  id            String    @id @default(auto()) @map("_id")
+  phone         String    @unique @db.VarChar(20)
+  name          String    @db.VarChar(100)
+  password      String    @db.VarChar(100)
+  about         String    @default("Hey there! I am using WhatsApp") @db.VarChar(200)
+  avatarUrl     String?   @db.VarChar(500)
+  lastSeen      DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+```
 
-### Caching Strategy
-- **User Sessions**: JWT token caching
-- **Message History**: Redis for recent message caching
-- **Conversation Lists**: Cached per-user conversation metadata
-- **Rate Limiting**: Redis distributed rate limiting
+### Message
 
-### Database Optimization
-- **Query Indexing**: Strategic indexing for common lookups
-- **Connection Pooling**: Efficient database connection management
-- **Read Replicas**: Support for read-heavy workloads
-- **Transaction Management**: Atomic operations for data integrity
+```prisma
+model Message {
+  id              String    @id @default(auto()) @map("_id")
+  from            String    @db.VarChar(100)
+  to              String    @db.VarChar(100)
+  content         String    @db.VarChar(5000)
+  status          String    @default("sent") @db.VarChar(20)
+  conversationId  String    @map("conversation_id") @db.VarChar(100)
+  createdAt       DateTime  @default(now())
 
----
+  @@index([from])
+  @@index([to])
+  @@index([status])
+}
+```
 
-## 🚀 Deployment & Operations
+### Conversation
 
-### Production Checklist
-1. **Environment Setup**: Configure all environment variables
-2. **Database Migration**: Run pending migrations
-3. **Cache Warming**: Pre-populate common cache keys
-4. **Load Testing**: Validate performance under expected load
-5. **Security Audit**: Run security scans and vulnerability assessments
-6. **Monitoring Setup**: Configure logging and health checks
-7. **Backup Strategy**: Database backup and retention policies
+```prisma
+model Conversation {
+  id            String    @id @default(auto()) @map("_id")
+  name          String?   @db.VarChar(100)
+  isGroup       Boolean   @default(false) @map("is_group")
+  participants  String[]
+  lastMessage   String?   @map("last_message") @db.VarChar(500)
+  unreadCount   Int       @default(0) @map("unread_count")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-### Operational Procedures
-- **Log Rotation**: Automated log management and retention
-- **Backup & Restore**: Database backup procedures
-- **Deployment Strategy**: Blue-green deployment with zero downtime
-- **Rollback Plans**: Quick rollback procedures for critical issues
-- **Performance Tuning**: Regular performance audits and optimizations
+  @@index([updatedAt])
+}
+```
 
----
+## API Routes
 
-## 📈 Engineering Metrics
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/register` | Create account |
+| `POST` | `/api/auth/login` | Sign in |
+| `POST` | `/api/auth/refresh` | Refresh token |
+| `POST` | `/api/auth/logout` | Sign out |
+| `GET` | `/api/auth/me` | Current user |
+| `POST` | `/api/messages` | Send message |
+| `GET` | `/api/messages/:id` | Get message |
+| `GET` | `/api/messages/conversations/:id` | Get conversation messages |
+| `POST` | `/api/conversations` | Create conversation |
+| `GET` | `/api/conversations` | List conversations |
+| `GET` | `/api/conversations/:id` | Get conversation |
+| `PUT` | `/api/conversations/:id` | Update conversation |
+| `DELETE` | `/api/conversations/:id` | Delete conversation |
+| `POST` | `/api/conversations/:id/read` | Mark as read |
+| `PUT` | `/api/conversations/:id/name` | Update group name |
+| `GET` | `/api/users` | List users |
+| `GET` | `/api/users/me` | Get profile |
+| `PUT` | `/api/users/me` | Update profile |
+| `POST` | `/api/users/me/subscription` | Save push subscription |
+| `POST` | `/api/contacts` | Add contact |
+| `GET` | `/api/contacts` | List contacts |
+| `GET` | `/api/contacts/:id` | Get contact |
+| `PUT` | `/api/contacts/:id` | Update contact |
+| `DELETE` | `/api/contacts/:id` | Remove contact |
 
-### Performance Benchmarks
-- **Message Delivery**: <100ms average response time
-- **Connection Establishment**: <50ms WebSocket connection time
-- **Memory Usage**: <512MB for typical operations
-- **Concurrency**: 10k+ simultaneous connections
-- **Cache Hit Ratio**: >95% for frequently accessed data
+## Scripts
 
-### Reliability Targets
-- **Uptime**: 99.9%+ availability
-- **Error Rate**: <0.1% HTTP error rate
-- **Recovery Time**: <30 seconds for infrastructure failures
-- **Data Consistency**: 100% transaction integrity
+| Command | Description |
+|---------|-------------|
+| `pnpm run dev` | Start development server |
+| `pnpm run build` | Compile TypeScript |
+| `pnpm run start` | Start production server |
+| `pnpm run lint` | Run ESLint |
+| `pnpm run db:push` | Push schema to database |
+| `pnpm run db:seed` | Seed database |
+| `pnpm run db:studio` | Open Prisma Studio |
 
-This backend provides a robust, scalable foundation for the Quick Chat application with enterprise-grade features and performance optimizations.
+## Related Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — System design
+- [API Reference](docs/API.md) — Complete API docs
+- [Security](docs/SECURITY.md) — Security implementation

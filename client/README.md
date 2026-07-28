@@ -1,151 +1,145 @@
-# Quick Chat - Frontend
+# Client
 
-The **Quick Chat** frontend is a modern, responsive WhatsApp-style chat interface built with **Next.js 15**, **TypeScript**, and **Tailwind CSS**. Features real-time messaging via Socket.io with advanced offline capabilities and high-performance rendering.
+> Next.js 15 frontend for Quick Chat.
 
-## 🚀 Key Features
+[← Documentation Index](docs/INDEX.md) · [Server →](server/README.md)
 
-- **Real-Time Chat**: Instant message delivery with typing indicators and status updates
-- **Offline-First UI**: Local message queuing and optimistic updates for seamless offline experience
-- **Responsive Design**: Mobile-first approach optimized for all device sizes
-- **Performance Optimized**: Virtualization for smooth 60 FPS rendering of 10,000+ messages
-- **Accessibility**: WCAG compliant with proper ARIA labels and keyboard navigation
-- **Dark Mode**: Theme switching with persistence
+## Tech Stack
 
----
+- **Framework**: Next.js 15 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS
+- **State**: Zustand
+- **Offline**: Dexie.js (IndexedDB)
+- **Realtime**: Socket.io Client
+- **Virtualization**: @tanstack/react-virtual
 
-## 🛠 Tech Stack
-
-- **Framework:** Next.js 15 (App Router) - Server-side rendering
-- **Language:** TypeScript - Full type safety
-- **Styling:** Tailwind CSS + Shadcn/ui (Radix Primitives)
-- **State Management:** Zustand - Lightweight reactive state management
-- **HTTP Client:** Axios - API communication
-- **Icons:** Lucide React - Feature-rich icon set
-- **Forms:** React Hook Form + Zod - Type-safe forms
-
----
-
-## ✅ Prerequisites
-
-- Node.js >= 18.0.0
-- Backend server running on port 8000
-
----
-
-## 📦 Installation
-
-1. **Navigate to client directory**
-   ```bash
-   cd client
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   pnpm install
-   ```
-
-3. **Environment Configuration**
-   Create a `.env.local` file:
-   ```env
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-   NEXT_PUBLIC_SOCKET_URL=http://localhost:8000
-   ```
-
-   **Note:** Port `8000` for the backend and `3000` for the frontend should match your deployment environment
-
----
-
-## 🏃 Running the Application
-
-### Development Mode
-```bash
-pnpm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) to view the app.
-
-### Production Build
-```bash
-pnpm run build
-pnpm start
-```
-
----
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 client/
-├── app/                  # Next.js App Router Pages
-│   ├── login/            # Authentication pages
-│   ├── (conversation)/   # Main chat interface (dynamic routes)
-│   └── layout.tsx        # Root layout with providers and error boundaries
-├── components/           # Reusable React components
-│   ├── chat/             # Chat-specific components (MessageBubbles, MessageInput, ChatList)
-│   ├── common/           # Layout components and loading states
-│   └── ui/               # Shadcn UI component primitives
-├── hooks/                # Custom React hooks
-│   ├── useAuth.ts        # Authentication state management
-│   ├── useMessages.ts    # Chat history and sending logic
-│   └── useSocket.ts      # WebSocket connection management
-├── services/             # API and background services
-│   ├── api-client.ts     # HTTP API client (Axios configuration)
-│   └── message-queue.ts  # Background job queue for offline messages
-├── store/                # Zustand application stores
-│   ├── userStore.ts      # User authentication and profile state
-│   └── chatStore.ts      # Chat UI and state management
-└── lib/                  # Utility functions and formatters
+├── app/                    # Next.js App Router
+│   ├── (auth)/             # Auth routes (login, register)
+│   ├── (app)/              # Protected routes
+│   │   ├── components/     # Chat interface components
+│   │   └── page.tsx        # Main chat page
+│   ├── api/                # API route handlers
+│   └── layout.tsx          # Root layout
+├── components/             # Shared UI components
+│   └── ui/                 # shadcn/ui components
+├── hooks/                  # Custom React hooks
+├── lib/                    # Utilities and API client
+├── store/                  # Zustand state stores
+└── utils/                  # Helper functions
 ```
 
----
+## Key Components
 
-## 🧪 Key Implementation Details
+### Chat Interface
 
-- **Optimistic UI**: Message appears immediately in chat when sent, status updates (sent/delivered/read) reflected instantly
-- **Socket Service**: Singleton WebSocket connection management prevents multiple connection issues
-- **Infinite Scroll**: Chat history loads incrementally with virtualization for performance
-- **Message Queue Service**: Handles offline message queuing with retry logic and background sync
-- **IndexedDB Integration**: Local message persistence for offline-first capabilities
-- **Error Boundaries**: Graceful error handling throughout the UI
-- **Responsive Breakpoints**: Mobile-first design with responsive chat layouts
-
----
-
-## 🔧 Performance Optimizations
-
-- **Virtualization**: Renders only visible messages for 60 FPS performance at scale
-- **Infinite Scroll**: Lazy-loads chat history without loading entire conversation
-- **Local Storage**: IndexedDB for offline message persistence
-- **WebSocket**: Real-time bidirectional communication with reconnection logic
-- **Bundle Optimization**: Code splitting and tree-shaking for fast loading
-
----
-
-## 📊 Development Setup
-
-### Running Both Client and Server
-
-```bash
-# Terminal 1 (Backend)
-cd server
-pnpm install
-pnpm run dev
-# Server: http://localhost:8000
-
-# Terminal 2 (Frontend)
-cd client
-pnpm install
-pnpm run dev
-# Client: http://localhost:3000
+```
+app/(app)/components/
+├── ChatHeader.tsx          # Conversation header with user info
+├── ChatInput.tsx           # Message input with send button
+├── ChatMessages.tsx        # Virtualized message list
+├── MessageItem.tsx         # Individual message bubble
+├── MessageStatus.tsx       # Delivery status indicators
+├── ConversationsList.tsx   # Left sidebar conversation list
+├── ConversationItem.tsx    # Individual conversation row
+└── NoConversations.tsx     # Empty state
 ```
 
-### Docker Deployment (Backend)
+### State Management
 
-```bash
-cd server
-docker build -t quick-chat-client .
-docker run -p 8000:8000 quick-chat-client
+**Zustand Stores:**
+
+| Store | Purpose |
+|-------|---------|
+| `useAuthStore` | User authentication state |
+| `useConversationStore` | Active conversation, message list |
+| `useConversationsStore` | All conversations list |
+| `useContactsStore` | Contact management |
+| `useSocketStore` | Socket.io connection state |
+
+### Custom Hooks
+
+| Hook | Purpose |
+|------|---------|
+| `useSocket` | Socket.io connection management |
+| `useMessageHandler` | Message send/receive/status logic |
+| `useChatScroll` | Auto-scroll behavior |
+| `useDebounce` | Input debouncing |
+| `useMediaQuery` | Responsive design |
+
+## Offline Support
+
+### IndexedDB Schema (Dexie.js)
+
+```typescript
+// lib/dexie.ts
+class ChatDatabase extends Dexie {
+  messages: Table<Message>;
+  conversations: Table<Conversation>;
+  contacts: Table<Contact>;
+}
 ```
 
-See [Server README](../server/README.md) for deployment instructions (Render, AWS, etc.).
+### Message Queue
+
+Messages are queued locally when offline:
+
+```typescript
+// Uses @tanstack/pacer for retry logic
+const messageQueue = new Queue({
+  concurrency: 1,
+  retryDelay: 1000,
+  maxRetries: 3,
+});
+```
+
+### Sync Strategy
+
+1. Save to IndexedDB immediately (optimistic)
+2. Attempt server delivery
+3. On success: update status to `sent`
+4. On failure: retry with exponential backoff
+5. On reconnect: flush pending messages
+
+## API Client
+
+### Base Configuration
+
+```typescript
+// lib/api.ts
+const api = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  withCredentials: true,
+});
+```
+
+### Interceptors
+
+- **Request**: Attach access token from auth store
+- **Response**: Handle 401 by refreshing token
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | Backend API URL |
+| `NEXT_PUBLIC_WS_URL` | WebSocket server URL |
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `pnpm run dev` | Start development server |
+| `pnpm run build` | Production build |
+| `pnpm run start` | Start production server |
+| `pnpm run lint` | Run ESLint |
+
+## Related Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — System design
+- [Message Flow](docs/MESSAGE_FLOW.md) — Client-side message handling
+- [Performance](docs/PERFORMANCE.md) — Client optimizations
