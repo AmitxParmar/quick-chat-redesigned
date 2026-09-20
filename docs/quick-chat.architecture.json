@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Quick Chat Architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [1280, 760]
+  },
+  "components": [
+    { "id": "chat-web", "type": "frontend", "label": "Next.js Client", "sublabel": "React UI · Zustand", "pos": [60, 320], "size": [190, 76] },
+    { "id": "local-messages", "type": "database", "label": "IndexedDB", "sublabel": "Dexie · offline messages", "pos": [60, 100], "size": [190, 76] },
+    { "id": "http-api", "type": "backend", "label": "Express REST API", "sublabel": "Auth · contacts · chat", "pos": [485, 320], "size": [220, 76] },
+    { "id": "persistent-store", "type": "database", "label": "MongoDB", "sublabel": "Users · conversations · messages", "pos": [990, 320], "size": [230, 76] },
+    { "id": "realtime-server", "type": "backend", "label": "Socket.io Server", "sublabel": "Relay · receipts · presence", "pos": [485, 100], "size": [220, 76] },
+    { "id": "shared-redis", "type": "database", "label": "Redis", "sublabel": "Cache · sessions · Pub/Sub", "pos": [990, 100], "size": [230, 76] },
+    { "id": "background-jobs", "type": "messagebus", "label": "BullMQ", "sublabel": "Redis-backed jobs", "pos": [485, 580], "size": [220, 76] },
+    { "id": "chat-jobs-worker", "type": "backend", "label": "Chat Worker", "sublabel": "Notifications · analytics", "pos": [990, 580], "size": [230, 76] }
+  ],
+  "connections": [
+    { "id": "local-persistence", "from": "chat-web", "to": "local-messages", "label": "read / write", "fromSide": "top", "toSide": "bottom" },
+    { "id": "rest-requests", "from": "chat-web", "to": "http-api", "label": "HTTP / REST", "variant": "emphasis", "labelDy": 22 },
+    { "id": "socket-events", "from": "chat-web", "to": "realtime-server", "label": "Socket.io events", "fromSide": "right", "toSide": "left" },
+    { "id": "durable-records", "from": "http-api", "to": "persistent-store", "label": "Prisma ORM", "variant": "emphasis" },
+    { "id": "redis-state", "from": "http-api", "to": "shared-redis", "label": "cache / sessions", "fromSide": "right", "toSide": "bottom" },
+    { "id": "socket-scale", "from": "realtime-server", "to": "shared-redis", "label": "optional Redis adapter" },
+    { "id": "enqueue-background", "from": "realtime-server", "to": "background-jobs", "label": "enqueue jobs", "fromSide": "top", "toSide": "left", "variant": "dashed", "via": [[595, 40], [30, 40], [30, 618]], "labelAt": [257, 600] },
+    { "id": "process-background", "from": "background-jobs", "to": "chat-jobs-worker", "label": "process jobs", "variant": "dashed" }
+  ]
+}
