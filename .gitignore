@@ -3,7 +3,9 @@
 # dependencies
 /client/node_modules
 /server/node_modules
-
+.agents
+# Regenerable knowledge-graph cache (rebuild with `graphify update .`)
+graphify-out/
 
 /.pnp
 .pnp.*
