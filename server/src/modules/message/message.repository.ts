@@ -51,6 +51,24 @@ export class MessageRepository {
     }
 
     /**
+     * Finds messages created after a timestamp (keyset catch-up for
+     * reconnects — PERFORMANCE_ENGINEERING 1.3). Uses the
+     * @@index([conversationId, timestamp]) compound index: no offsets,
+     * so concurrent inserts can't shift or duplicate windows.
+     */
+    public async findByConversationSince(
+        conversationId: string,
+        since: number,
+        limit = 100
+    ): Promise<Message[]> {
+        return prisma.message.findMany({
+            where: { conversationId, timestamp: { gt: since } },
+            orderBy: { timestamp: 'asc' },
+            take: Math.min(limit, 100),
+        });
+    }
+
+    /**
      * Searches messages by text content
      */
     public async searchMessages(

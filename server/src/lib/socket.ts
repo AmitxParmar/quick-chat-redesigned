@@ -8,6 +8,7 @@ import logger from '@/lib/logger';
 import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 import environment from '@/lib/environment';
 import { chatQueue } from '@/lib/queue';
+import messageRepository from '@/modules/message/message.repository';
 import {
     SocketEvents,
     type AuthenticatedSocket,
@@ -217,6 +218,28 @@ class SocketService {
         socket.on('conversation:join', (conversationId: string) => {
             socket.join(conversationId);
             logger.info(`User ${userId} joined conversation room: ${conversationId}`);
+        });
+
+        // Catch-up sync (PERFORMANCE_ENGINEERING 1.3): after a reconnect the
+        // client asks for everything missed since its last stored timestamp.
+        // Answered only to the requesting socket; client bulkPut is idempotent.
+        socket.on('conversation:sync', async (payload: { conversationId: string; since?: number }) => {
+            try {
+                const { conversationId, since } = payload || {};
+                if (!conversationId || !socket.user?.waId) return;
+                const resolvedId = await messageRepository.resolveConversationId(conversationId);
+                if (!resolvedId) return;
+                const isParticipant = await messageRepository.isUserParticipant(socket.user.waId, resolvedId);
+                if (!isParticipant) {
+                    logger.warn(`Sync denied: user ${socket.user.waId} not in ${conversationId}`);
+                    return;
+                }
+                const missed = await messageRepository.findByConversationSince(resolvedId, since || 0);
+                socket.emit('conversation:catchup', { conversationId: resolvedId, messages: missed });
+                logger.debug(`Sent ${missed.length} catch-up messages for ${conversationId}`);
+            } catch (e) {
+                logger.error('conversation:sync failed:', e);
+            }
         });
 
         // Handle room leaving
