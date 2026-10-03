@@ -15,7 +15,7 @@ export default function middleware(request: NextRequest) {
     const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
 
     // Check if this is a protected route
-    const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route)) || pathname === '/';
+    const isProtectedRoute = !isPublicRoute && protectedRoutes.some(route => pathname.startsWith(route));
 
     // If user is not authenticated and trying to access protected route
     if (!accessToken && isProtectedRoute) {
@@ -50,6 +50,6 @@ export const config = {
          * - favicon.ico (favicon)
          * - public folder files
          */
-        '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+        '/((?!_next/static|_next/image|favicon.ico|sw.js|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
     ],
 };

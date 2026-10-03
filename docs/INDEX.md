@@ -15,6 +15,7 @@
 | [API Reference](API.md) | REST endpoints and WebSocket events |
 | [Deployment](DEPLOYMENT.md) | Environment variables, Docker, production setup |
 | [Performance](PERFORMANCE.md) | Caching, virtualization, latency, scalability |
+| [Performance Engineering](PERFORMANCE_ENGINEERING.md) | Advanced concepts from the realtime-market-lab: reconnect resilience, instrumentation, fanout hot spots, rollout order |
 | [Security](SECURITY.md) | JWT, validation, rate limiting, attack prevention |
 
 ## Component Documentation

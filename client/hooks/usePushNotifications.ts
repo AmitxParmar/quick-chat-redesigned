@@ -57,6 +57,11 @@ export const usePushNotifications = () => {
         }
 
         try {
+            if (Notification.permission !== 'granted') {
+                console.warn('[usePushNotifications] Notification permission not granted, skipping subscribe');
+                return;
+            }
+
             const registration = await navigator.serviceWorker.ready;
 
             // Check for existing subscription
@@ -88,14 +93,6 @@ export const usePushNotifications = () => {
             console.log('Push subscription successful');
         } catch (error) {
             console.error('Failed to subscribe to push', error);
-            // If chrome, sometimes we need to unsubscribe first if the key changed
-            if (error instanceof Error && error.message.includes('Registration failed')) {
-                console.warn('[usePushNotifications] Registration failed, attempting to unregister SW and retry...');
-                // Optional: Force unregister SW to clean state
-                const registration = await navigator.serviceWorker.ready;
-                await registration.unregister();
-                window.location.reload();
-            }
         }
     }, []);
 
