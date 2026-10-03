@@ -7,6 +7,7 @@ import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
 import { liveQuery } from "dexie";
 import { messageDexieService } from "@/services/message.dexie.service";
+import { handleCatchup } from "@/logic/socket-event-handlers";
 import useAuth from "./useAuth";
 import { createOutboundMessage } from "@/utils/message-factory";
 
@@ -154,13 +155,23 @@ export function useMessages(conversationId: string) {
       // would silently stop until remount without this.
       socket.emit(SocketEvents.CONVERSATION_JOIN, conversationId);
       retryPendingMessages();
+      requestCatchup();
+    };
+
+    // Catch-up replies land here (server: conversation:sync handler).
+    // bulkPut is idempotent, so overlaps with live traffic are safe.
+    const onCatchup = (payload: { conversationId: string; messages: Message[] }) => {
+      if (payload?.conversationId !== conversationId) return;
+      handleCatchup(payload);
     };
 
     socket.on("connect", onConnect);
+    socket.on(SocketEvents.CONVERSATION_CATCHUP, onCatchup);
 
     // Initial check in case we are already connected or just loaded
     if (socket.connected) {
       retryPendingMessages();
+      requestCatchup();
     }
 
     // Also listen to online status of browser
@@ -169,8 +180,23 @@ export function useMessages(conversationId: string) {
 
     return () => {
       socket.off("connect", onConnect);
+      socket.off(SocketEvents.CONVERSATION_CATCHUP, onCatchup);
       window.removeEventListener('online', onOnline);
     };
+
+    // Ask the server for everything missed since our newest stored
+    // message (PERFORMANCE_ENGINEERING 1.3). Keyset, not offsets.
+    async function requestCatchup() {
+      try {
+        const last = await messageDexieService.getLastMessage(conversationId);
+        socket.emit(SocketEvents.CONVERSATION_SYNC, {
+          conversationId,
+          since: last?.timestamp ?? 0,
+        });
+      } catch (e) {
+        console.error("Catch-up request failed:", e);
+      }
+    }
 
     async function retryPendingMessages() {
       const pending = await messageDexieService.getPendingMessages(conversationId);

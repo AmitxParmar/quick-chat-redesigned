@@ -11,6 +11,8 @@ export enum SocketEvents {
     // Conversation events
     CONVERSATION_JOIN = "conversation:join",
     CONVERSATION_UPDATED = "conversation:updated",
+    CONVERSATION_SYNC = "conversation:sync",
+    CONVERSATION_CATCHUP = "conversation:catchup",
 
     // Message events
     MESSAGE_CREATED = "message:created",

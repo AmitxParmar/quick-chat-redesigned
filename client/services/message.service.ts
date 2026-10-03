@@ -37,7 +37,7 @@ export async function getMessages(
   const res = await api.get(`${API_BASE}/${conversationId}`, {
     params: queries,
   });
-  console.log("msgs", res.data);
+  if (process.env.NODE_ENV === "development") console.log("msgs", res.data);
   return res.data.data as IMessageResponse;
 }
 

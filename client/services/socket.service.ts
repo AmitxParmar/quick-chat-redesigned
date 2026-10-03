@@ -40,7 +40,7 @@ class SocketService {
                 }
             }
 
-            console.log("[SocketService] Connecting to:", url);
+            if (process.env.NODE_ENV === "development") console.log("[SocketService] Connecting to:", url);
 
             this.socket = io(url, {
                 transports: ["websocket"],
@@ -57,7 +57,7 @@ class SocketService {
             });
 
             this.socket!.on("connect", () => {
-                console.log("[SocketService] Connected with ID:", this.socket?.id);
+                if (process.env.NODE_ENV === "development") console.log("[SocketService] Connected with ID:", this.socket?.id);
             });
 
             this.socket!.on("connect_error", (err: Error) => {
@@ -65,7 +65,7 @@ class SocketService {
             });
 
             this.socket!.on("disconnect", (reason: string) => {
-                console.log("[SocketService] Disconnected:", reason);
+                if (process.env.NODE_ENV === "development") console.log("[SocketService] Disconnected:", reason);
             });
         }
         return this.socket!;

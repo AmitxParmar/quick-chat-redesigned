@@ -4,36 +4,85 @@ import { messageDexieService } from "@/services/message.dexie.service";
 import { SocketEvents } from "@/types/socket-events";
 
 /**
+ * Bounded buffer for incoming `MESSAGE_CREATED` events
+ * (PERFORMANCE_ENGINEERING 1.4/1.5). Bursts (busy groups, catch-up
+ * batches) used to cause one Dexie write + one store notification per
+ * message. Now events accumulate here and flush once per macrotask via
+ * bulkPut — a single Dexie transaction, a single liveQuery update.
+ *
+ * setTimeout(0), not rAF: rAF stalls in background tabs, which would
+ * stall persistence. Overflow drops the OLDEST (stale first) and counts
+ * them; catch-up (conversation:sync) re-fetches anything truly missed.
+ */
+const MAX_INCOMING_BUFFER = 500;
+let incomingBuffer: { message: Message; conversationId: string }[] = [];
+let flushScheduled = false;
+let droppedIncoming = 0;
+
+/** Dropped-event counter for the perf overlay; consume-and-reset. */
+export const consumeIncomingDroppedCount = (): number => {
+    const n = droppedIncoming;
+    droppedIncoming = 0;
+    return n;
+};
+
+/**
  * Handles incoming `MESSAGE_CREATED` events.
- * Saves message to Dexie and emits delivered status if acceptable.
+ * Buffers the event; the scheduled flush persists + acks the batch.
  */
 export const handleIncomingMessage = (
     socket: Socket,
     userWaId: string | undefined,
     payload: { message: Message; conversationId: string }
 ) => {
-    if (payload?.message) {
-        messageDexieService
-            .addMessage(payload.message)
-            .then(() => {
-                // Ack delivery
-                // Only ack if it wasn't sent by me
-                if (payload.message.from !== userWaId) {
+    if (!payload?.message) return;
+    incomingBuffer.push({ message: payload.message, conversationId: payload.conversationId });
+    const overflow = incomingBuffer.length - MAX_INCOMING_BUFFER;
+    if (overflow > 0) {
+        incomingBuffer.splice(0, overflow);
+        droppedIncoming += overflow;
+    }
+    if (!flushScheduled) {
+        flushScheduled = true;
+        setTimeout(() => flushIncoming(socket, userWaId), 0);
+    }
+};
+
+function flushIncoming(socket: Socket, userWaId: string | undefined): void {
+    flushScheduled = false;
+    if (incomingBuffer.length === 0) return;
+    const batch = incomingBuffer;
+    incomingBuffer = [];
+    messageDexieService
+        .addMessages(batch.map((b) => b.message))
+        .then(() => {
+            // Ack delivery per message — skip our own echoes.
+            for (const { message, conversationId } of batch) {
+                if (message.from !== userWaId) {
                     socket.emit(SocketEvents.MESSAGE_STATUS_UPDATED, {
-                        id: payload.message.id,
+                        id: message.id,
                         status: "delivered",
-                        conversationId: payload.conversationId,
+                        conversationId,
                         updatedBy: userWaId,
                     });
                 }
-            })
-            .catch((err) => {
-                console.error(
-                    "[GlobalSocketListener] Failed to save message to Dexie:",
-                    err
-                );
-            });
-    }
+            }
+        })
+        .catch((err) => {
+            console.error(
+                "[GlobalSocketListener] Failed to save message batch to Dexie:",
+                err
+            );
+        });
+}
+
+/**
+ * Handles `conversation:catchup` payloads (PERFORMANCE_ENGINEERING 1.3).
+ * bulkPut is idempotent — replays and overlaps are safe.
+ */
+export const handleCatchup = (payload: { conversationId: string; messages: Message[] }) => {
+    if (!payload?.messages?.length) return;
+    messageDexieService.addMessages(payload.messages).catch(console.error);
 };
 
 /**
