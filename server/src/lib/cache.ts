@@ -56,6 +56,9 @@ export const CacheKeys = {
     /** User online status: cache:user:online:{waId} */
     USER_ONLINE: (waId: string) => `cache:user:online:${waId}`,
 
+    /** Socket-auth user snapshot: cache:user:sock:{userId} */
+    USER_SOCKET: (userId: string) => `cache:user:sock:${userId}`,
+
     /** Message idempotency key: cache:message:idempotency:{correlationId} */
     MESSAGE_IDEMPOTENCY: (correlationId: string) => `cache:message:idempotency:${correlationId}`,
 } as const;
@@ -75,6 +78,9 @@ export const CacheTTL = {
 
     /** 60 seconds for online status (refresh with heartbeat) */
     USER_ONLINE: 60,
+
+    /** 15 minutes for socket-auth user snapshots (TTL bounds staleness) */
+    USER_SOCKET: 15 * 60,
 
     /** 5 minutes for idempotency keys (prevent duplicates) */
     MESSAGE_IDEMPOTENCY: 5 * 60,
@@ -299,6 +305,23 @@ class CacheService {
         } else {
             await this.del(key);
         }
+    }
+
+    /**
+     * Batch-refresh online status for many users in ONE round trip.
+     * Used by the socket heartbeat (PERFORMANCE_ENGINEERING 3.3): the old
+     * Promise.all-of-SETs issued one RTT per connected user every 30s.
+     */
+    async setUsersOnline(waIds: string[]): Promise<void> {
+        const unique = [...new Set(waIds)];
+        if (unique.length === 0) return;
+        await this._executeWithBreaker('cache:user:online:batch', async () => {
+            const p = redis.pipeline();
+            for (const waId of unique) {
+                p.set(CacheKeys.USER_ONLINE(waId), 'true', { ex: CacheTTL.USER_ONLINE });
+            }
+            await p.exec();
+        }, undefined);
     }
 
     /**

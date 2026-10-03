@@ -5,7 +5,7 @@ import { Redis } from 'ioredis';
 import jwtService from '@/lib/jwt';
 import authRepository from '@/modules/auth/auth.repository';
 import logger from '@/lib/logger';
-import cacheService from '@/lib/cache';
+import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 import environment from '@/lib/environment';
 import { chatQueue } from '@/lib/queue';
 import {
@@ -13,7 +13,7 @@ import {
     type AuthenticatedSocket,
     type NotificationPayload,
 } from '@/types/socket.type';
-import { Conversation, Message } from '@prisma/client';
+import { Conversation, Message, User } from '@prisma/client';
 
 class SocketService {
     private io: Server | null = null;
@@ -69,7 +69,18 @@ class SocketService {
                     return next(new Error('Invalid or expired token'));
                 }
 
-                const user = await authRepository.findUserById(payload.userId);
+                // Cache-aside (PERFORMANCE_ENGINEERING 3.2): the handshake
+                // runs on EVERY (re)connect, so a Mongo hit here becomes DB
+                // QPS under reconnect storms. Snapshot is TTL-bound (15m);
+                // only id/waId are used for socket auth downstream.
+                const sockCacheKey = CacheKeys.USER_SOCKET(payload.userId);
+                let user = await cacheService.get<User>(sockCacheKey);
+                if (!user) {
+                    user = await authRepository.findUserById(payload.userId);
+                    if (user) {
+                        await cacheService.set(sockCacheKey, user, CacheTTL.USER_SOCKET);
+                    }
+                }
                 if (!user) {
                     return next(new Error('User not found'));
                 }
@@ -266,7 +277,7 @@ class SocketService {
                     throw new Error('Unauthorized: Sender identity mismatch');
                 }
 
-                logger.info(`Relaying message ${message.id} for conversation ${conversationId}`);
+                logger.debug(`Relaying message ${message.id} for conversation ${conversationId}`);
 
                 // Broadcast to conversation room (including sender if they have multiple tabs)
                 // AND participants specifically
@@ -321,7 +332,7 @@ class SocketService {
                 timestamp: Date.now()
             });
 
-            logger.info(`User ${waId} marked messages as read in ${conversationId}`);
+            logger.debug(`User ${waId} marked messages as read in ${conversationId}`);
         });
 
         // Handle message status updates (Delivered/Read) from client
@@ -337,7 +348,7 @@ class SocketService {
                 updatedBy: payload.updatedBy
             });
 
-            logger.info(`Relayed message status ${status} for ${id}`);
+            logger.debug(`Relayed message status ${status} for ${id}`);
         });
 
         // Set initial online status — broadcast only for the FIRST socket
@@ -389,8 +400,8 @@ class SocketService {
                     }
                 }
 
-                // Batch refresh in parallel
-                await Promise.all(waIds.map(waId => cacheService.setUserOnline(waId, true)));
+                // Batch refresh in a single round trip (PERFORMANCE_ENGINEERING 3.3)
+                await cacheService.setUsersOnline(waIds);
             } catch (e) {
                 logger.error('Heartbeat failed:', e);
             }
@@ -428,7 +439,7 @@ class SocketService {
             participants.forEach(waId => {
                 this.io?.to(`user:${waId}`).emit('message:created', payload);
             });
-            logger.info(`Emitted message:created for conversation ${conversationId} to ${participants.length} participants`);
+            logger.debug(`Emitted message:created for conversation ${conversationId} to ${participants.length} participants`);
         } else {
             // Fallback: Global emit if no participants provided (trying to avoid this)
             // But typically this method is called with participants now
@@ -452,7 +463,7 @@ class SocketService {
             participants.forEach(waId => {
                 this.io?.to(`user:${waId}`).emit('conversation:updated', conversation);
             });
-            logger.info(`Emitted conversation:updated for conversation ${conversationId} to ${participants.length} participants`);
+            logger.debug(`Emitted conversation:updated for conversation ${conversationId} to ${participants.length} participants`);
         } else {
             logger.warn(`emitConversationUpdated called without participants for ${conversationId}`);
         }
@@ -475,7 +486,7 @@ class SocketService {
             });
         }
 
-        logger.info(`Emitted message:status-updated for message ${payload.id}`);
+        logger.debug(`Emitted message:status-updated for message ${payload.id}`);
     }
 
     /**
@@ -490,7 +501,7 @@ class SocketService {
             });
         }
 
-        logger.info(`Emitted messages:marked-as-read for conversation ${conversationId}`);
+        logger.debug(`Emitted messages:marked-as-read for conversation ${conversationId}`);
     }
 
     /**
@@ -503,7 +514,7 @@ class SocketService {
             participants.forEach(waId => {
                 this.io?.to(`user:${waId}`).emit('conversation:deleted', payload);
             });
-            logger.info(`Emitted conversation:deleted for conversation ${conversationId} to ${participants.length} participants`);
+            logger.debug(`Emitted conversation:deleted for conversation ${conversationId} to ${participants.length} participants`);
         } else {
             logger.warn(`emitConversationDeleted called without participants for ${conversationId}`);
         }
