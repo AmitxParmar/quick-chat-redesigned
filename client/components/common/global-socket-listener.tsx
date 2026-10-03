@@ -38,9 +38,15 @@ export default function GlobalSocketListener() {
         // Listener for bulk read receipt
         socket.on(SocketEvents.MESSAGES_MARKED_AS_READ, handleBulkRead);
 
-        // Listener for User Online -> Resend pending messages
-        const onUserOnline = ({ waId }: { waId: string }) =>
+        // Listener for User Online -> Resend pending messages.
+        // Skip our own presence: getPendingMessages(waId) matches
+        // msg.to === waId, so our own online event would re-emit our
+        // entire unread inbox as MESSAGE_SEND and eat a sender-mismatch
+        // rejection per message (PERFORMANCE_ENGINEERING 2.1).
+        const onUserOnline = ({ waId }: { waId: string }) => {
+            if (!waId || waId === user?.waId) return;
             handleUserOnline(socket, { waId });
+        };
 
         socket.on(SocketEvents.USER_ONLINE, onUserOnline);
 

@@ -219,8 +219,16 @@ class SocketService {
             logger.info(`User disconnected: ${userId}`);
             if (userWaId) {
                 try {
-                    await cacheService.setUserOnline(userWaId, false);
-                    this.io?.emit('user:offline', { waId: userWaId, lastSeen: Date.now() });
+                    // Dedup (PERFORMANCE_ENGINEERING 3.1): only broadcast
+                    // offline when the user's LAST socket goes away —
+                    // multi-tab users otherwise flap presence for everyone.
+                    // Note: count is per-instance; with the Redis adapter
+                    // two instances may each emit once. Still strictly
+                    // fewer broadcasts than before.
+                    if (this.countSocketsForWaId(userWaId) === 0) {
+                        await cacheService.setUserOnline(userWaId, false);
+                        this.io?.emit('user:offline', { waId: userWaId, lastSeen: Date.now() });
+                    }
                 } catch (e) {
                     logger.error(`Error handling disconnect for ${userWaId}:`, e);
                 }
@@ -332,13 +340,32 @@ class SocketService {
             logger.info(`Relayed message status ${status} for ${id}`);
         });
 
-        // Set initial online status
+        // Set initial online status — broadcast only for the FIRST socket
+        // (multi-tab second connections are a no-op for everyone else).
         if (userWaId) {
             cacheService.setUserOnline(userWaId, true).catch(err =>
                 logger.error(`Failed to set online status for ${userWaId}:`, err)
             );
-            this.io?.emit('user:online', { waId: userWaId });
+            if (this.countSocketsForWaId(userWaId) <= 1) {
+                this.io?.emit('user:online', { waId: userWaId });
+            }
         }
+    }
+
+    /**
+     * Counts live sockets for a waId on THIS instance (same iteration
+     * pattern as the heartbeat below). Used to suppress redundant
+     * presence broadcasts from multi-tab users.
+     */
+    private countSocketsForWaId(waId: string): number {
+        if (!this.io) return 0;
+        let count = 0;
+        for (const [, s] of this.io.sockets.sockets) {
+            if ((s as unknown as AuthenticatedSocket).user?.waId === waId) {
+                count += 1;
+            }
+        }
+        return count;
     }
 
     /**
