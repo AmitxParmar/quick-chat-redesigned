@@ -274,9 +274,11 @@ class SocketService {
                     removeOnComplete: true
                 });
 
-                // 3. Acknowledgement (Reliability)
+                // 3. Acknowledgement (Reliability + instrumentation:
+                // receivedAt lets the client separate server processing
+                // time from network RTT — see PERFORMANCE_ENGINEERING 1.6)
                 if (callback) {
-                    callback({ status: 'ok', messageId: message.id });
+                    callback({ status: 'ok', messageId: message.id, receivedAt: Date.now() });
                 }
             } catch (error) {
                 logger.error(`Message send error: ${error.message}`);

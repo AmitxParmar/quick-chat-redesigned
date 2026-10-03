@@ -3,6 +3,7 @@ import { MessageWithQueue, QueueConfig, QueueState } from '@/types';
 import { messageDexieService } from './message.dexie.service';
 import { socketService } from './socket.service';
 import { SocketEvents } from '@/types/socket-events';
+import { perfMetrics } from './perf-metrics.service';
 
 /**
  * Message Queue Service
@@ -175,8 +176,14 @@ class MessageQueueService {
                 return;
             }
 
+            // Instrumentation (PERFORMANCE_ENGINEERING 1.6): sample the
+            // full send->ack round trip; server stamps receivedAt on the ack.
+            perfMetrics.markSent();
+            const sendStart = performance.now();
+
             // Set timeout
             const timeoutId = setTimeout(() => {
+                perfMetrics.markFailed();
                 reject(new Error('Send timeout'));
             }, this.config.sendTimeoutMs);
 
@@ -188,8 +195,10 @@ class MessageQueueService {
                 clearTimeout(timeoutId);
 
                 if (ack?.error) {
+                    perfMetrics.markFailed();
                     reject(new Error(ack.error));
                 } else {
+                    perfMetrics.markAcked(performance.now() - sendStart);
                     resolve();
                 }
             });
