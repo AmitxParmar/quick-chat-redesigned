@@ -149,6 +149,10 @@ export function useMessages(conversationId: string) {
 
     const onConnect = () => {
       console.log("Socket connected, checking for pending messages...");
+      // Re-join: server-side rooms are lost on every reconnect, so
+      // status/read-receipt events addressed to the conversation room
+      // would silently stop until remount without this.
+      socket.emit(SocketEvents.CONVERSATION_JOIN, conversationId);
       retryPendingMessages();
     };
 

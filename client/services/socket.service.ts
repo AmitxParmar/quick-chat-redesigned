@@ -50,8 +50,10 @@ class SocketService {
                 perMessageDeflate: {
                     threshold: 1024,
                 },
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000,
+                reconnectionAttempts: Infinity,
+                reconnectionDelay: 500,
+                reconnectionDelayMax: 10_000,
+                randomizationFactor: 0.5,
             });
 
             this.socket!.on("connect", () => {
