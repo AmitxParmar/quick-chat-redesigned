@@ -16,6 +16,7 @@
 | [Deployment](DEPLOYMENT.md) | Environment variables, Docker, production setup |
 | [Performance](PERFORMANCE.md) | Caching, virtualization, latency, scalability |
 | [Performance Engineering](PERFORMANCE_ENGINEERING.md) | Advanced concepts from the realtime-market-lab: reconnect resilience, instrumentation, fanout hot spots, rollout order |
+| [Performance Implementation](PERFORMANCE_IMPLEMENTATION.md) | What shipped phase by phase: commits, verification, rollback |
 | [Security](SECURITY.md) | JWT, validation, rate limiting, attack prevention |
 
 ## Component Documentation

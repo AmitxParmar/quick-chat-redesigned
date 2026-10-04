@@ -63,6 +63,7 @@ Open [http://localhost:3000](http://localhost:3000).
 | [Deployment](docs/DEPLOYMENT.md) | Environment setup, Docker, production build |
 | [Performance](docs/PERFORMANCE.md) | Optimizations, caching, scalability |
 | [Performance Engineering](docs/PERFORMANCE_ENGINEERING.md) | Reconnect resilience, instrumentation, fanout hot spots |
+| [Performance Implementation](docs/PERFORMANCE_IMPLEMENTATION.md) | Shipped phases, commits, rollback |
 | [Security](docs/SECURITY.md) | Auth, validation, attack prevention |
 | [Client Docs](client/README.md) | Frontend architecture and component structure |
 | [Server Docs](server/README.md) | Backend modules, services, and infrastructure |
