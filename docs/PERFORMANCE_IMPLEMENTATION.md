@@ -23,6 +23,15 @@
 `__qcPerf.getSnapshot()` in the dev console after sending a message — that RTT
 number is the baseline every future optimization is judged against.
 
+Measured headlessly 2026-10-06 (localhost, socket.io ack timing = same path
+`__qcPerf` samples; probe script `/tmp/opencode/qc-probe.cjs`):
+
+- Send→ack RTT (n=20): **avg 1.24ms, p95 1.98ms**, min 0.96 / max 1.98
+- Reconnect handshake (fresh socket + JWT + room joins): **~334ms**
+- `conversation:sync` → `conversation:catchup`: **~190ms** (worst case, `since: 0`)
+
+Still open (needs a real browser): scroll-FPS ceiling at N thousand messages.
+
 ## Deliberately left out (still in the playbook)
 
 - History offset → cursor migration (server `findByConversation` still paged; catch-up path is keyset)
