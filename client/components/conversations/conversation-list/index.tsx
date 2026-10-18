@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { ConversationListItem } from "./conversation-list-item";
 import { useConversations } from "@/hooks/useConversations";
 import { useUIStore } from "@/store/ui-store";
@@ -9,21 +10,32 @@ const ConversationList = () => {
   const {
     data,
     isLoading,
-    error,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
   } = useConversations();
   const isContactListOpen = useUIStore((state) => state.isContactListOpen);
-  const observerTarget = React.useRef<HTMLDivElement>(null);
+  const parentRef = React.useRef<HTMLDivElement>(null);
+  const sentinelRef = React.useRef<HTMLDivElement>(null);
 
   // Flatten conversations from all pages
   const conversations = React.useMemo(() => {
     return data?.pages.flatMap((page) => page.conversations) || [];
   }, [data]);
 
-  // Infinite scroll observer
+  // Virtualize the (potentially large) conversation list. estimateSize
+  // follows the ~76px row documented in docs/PERFORMANCE.md.
+  const rowVirtualizer = useVirtualizer({
+    count: conversations.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 76,
+    overscan: 5,
+  });
+
+  // Infinite scroll observer for the sentinel below the virtual window
   React.useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
@@ -32,14 +44,9 @@ const ConversationList = () => {
       },
       { threshold: 1.0 }
     );
-
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
-
+    observer.observe(node);
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-
 
   // If contact list is open, render it instead of conversations
   if (isContactListOpen) {
@@ -47,16 +54,40 @@ const ConversationList = () => {
   }
 
   return (
-    <div className="flex-auto overflow-auto px-1.5 max-h-full custom-scrollbar">
+    <div
+      ref={parentRef}
+      className="flex-auto overflow-auto px-1.5 max-h-full custom-scrollbar"
+    >
       {isLoading ? (
         <ConversationListSkeleton />
       ) : conversations.length > 0 ? (
         <>
-          {conversations.map((contact) => (
-            <ConversationListItem key={contact.id} data={contact} />
-          ))}
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((vItem) => (
+              <div
+                key={vItem.key}
+                ref={rowVirtualizer.measureElement}
+                data-index={vItem.index}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vItem.start}px)`,
+                }}
+              >
+                <ConversationListItem data={conversations[vItem.index]} />
+              </div>
+            ))}
+          </div>
           {/* Sentinel for infinite scroll */}
-          <div ref={observerTarget} className="h-4 w-full flex justify-center py-2">
+          <div ref={sentinelRef} className="h-4 w-full flex justify-center py-2">
             {isFetchingNextPage && (
               <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
             )}
@@ -73,9 +104,8 @@ export default ConversationList;
 
 // Simple skeleton loader for chat list items
 const ConversationListSkeleton = () => {
-  // WhatsApp Web colors
-  const bgPrimary = "bg-background"; // chat list background
-  const bgSecondary = "bg-background"; // chat item background
+  const bgPrimary = "bg-background";
+  const bgSecondary = "bg-background";
   const bg = "bg-wa-info";
 
   return (

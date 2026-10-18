@@ -3,6 +3,10 @@ import initializeBundleAnalyzer from "@next/bundle-analyzer";
 
 const nextConfig: NextConfig = {
   compress: true,
+  poweredByHeader: false,
+  images: {
+    formats: ["image/webp", "image/avif"],
+  },
   experimental: {
     optimizePackageImports: [
       "lucide-react",

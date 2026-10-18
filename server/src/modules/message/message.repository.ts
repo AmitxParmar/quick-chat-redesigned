@@ -15,6 +15,11 @@ export interface PaginationQuery {
     limit?: number;
 }
 
+export interface CursorPaginationQuery extends PaginationQuery {
+    /** Keyset cursor: return messages strictly older than this timestamp. */
+    before?: number;
+}
+
 export interface SearchQuery extends PaginationQuery {
     query: string;
     conversationId?: string;
@@ -48,6 +53,38 @@ export class MessageRepository {
         ]);
 
         return { messages, total };
+    }
+
+    /**
+     * Keyset pagination for message history (PERFORMANCE_ENGINEERING 3.5):
+     * newest `limit` messages strictly before `before` (or the newest page
+     * when omitted), ordered by the @@index([conversationId, timestamp])
+     * compound index. No offsets — concurrent inserts cannot shift or
+     * duplicate windows. Returns the next cursor for the following page.
+     */
+    public async findByConversationBefore(
+        conversationId: string,
+        before?: number,
+        limit = 25
+    ): Promise<{ messages: Message[]; hasMore: boolean; nextCursor: number | null }> {
+        const take = Math.min(limit, 100);
+
+        const rows = await prisma.message.findMany({
+            where: {
+                conversationId,
+                ...(typeof before === 'number' ? { timestamp: { lt: before } } : {}),
+            },
+            orderBy: { timestamp: 'desc' },
+            take: take + 1, // +1 to detect a next page
+        });
+
+        const hasMore = rows.length > take;
+        const messages = hasMore ? rows.slice(0, take) : rows;
+        const nextCursor = hasMore && messages.length > 0
+            ? messages[messages.length - 1].timestamp
+            : null;
+
+        return { messages, hasMore, nextCursor };
     }
 
     /**

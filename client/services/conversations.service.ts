@@ -33,7 +33,7 @@ export async function markMessagesAsRead(conversationId: string, waId: string) {
 // Get conversation by ID
 export async function getConversationId(to: User["waId"]) {
   const res = await api.post(API_BASE, { to });
-  console.log("getconvoid", res.data);
+  process.env.NODE_ENV === "development" && console.log("getconvoid", res.data);
   return res.data.data;
 }
 

@@ -1,4 +1,4 @@
-import messageRepository, { type PaginationQuery, type SearchQuery } from './message.repository';
+import messageRepository, { type CursorPaginationQuery, type PaginationQuery, type SearchQuery } from './message.repository';
 import { MessageStatus, type Message } from '@prisma/client';
 import { HttpNotFoundError, HttpBadRequestError, HttpForbiddenError, HttpConflictError } from '@/lib/errors';
 import logger from '@/lib/logger';
@@ -17,6 +17,8 @@ export interface MessagePaginationResult {
         totalPages: number;
         totalMessages: number;
         hasMore: boolean;
+        /** Keyset cursor for the next (older) page, when cursor mode is used. */
+        nextCursor?: number | null;
     };
     cached?: boolean; // Indicates if result came from cache
 }
@@ -42,7 +44,7 @@ export default class MessageService {
      */
     public async getMessages(
         conversationId: string,
-        query: PaginationQuery,
+        query: CursorPaginationQuery,
         options: MessageServiceOptions
     ): Promise<MessagePaginationResult> {
         logger.info(`Getting messages for conversation: ${conversationId}`);
@@ -69,6 +71,25 @@ export default class MessageService {
 
         const page = query.page || 1;
         const limit = Math.min(query.limit || 50, 200);
+
+        // Cursor mode: keyset on the compound index, skips the page cache
+        // (older windows aren't what the recent-messages cache holds).
+        if (typeof query.before === 'number') {
+            const { messages, hasMore, nextCursor } =
+                await messageRepository.findByConversationBefore(resolvedId, query.before, limit);
+
+            return {
+                messages,
+                pagination: {
+                    currentPage: 1,
+                    totalPages: 1,
+                    totalMessages: 0,
+                    hasMore,
+                    nextCursor,
+                },
+                cached: false,
+            };
+        }
 
         // Try cache for page 1 (most recent messages)
         if (page === 1) {

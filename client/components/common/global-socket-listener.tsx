@@ -5,6 +5,7 @@ import { SocketEvents } from "@/types/socket-events";
 import useAuth from "@/hooks/useAuth";
 import { Message } from "@/types";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { usePresenceWatch } from "@/hooks/usePresenceWatch";
 import {
     handleIncomingMessage,
     handleStatusUpdate,
@@ -16,6 +17,10 @@ import {
 export default function GlobalSocketListener() {
     const { user } = useAuth();
     const { subscribeToPush } = usePushNotifications();
+
+    // Roster-room presence subscription: publish watched waIds so the
+    // server only sends us presence for our roster, not every user.
+    usePresenceWatch();
 
     // Initialize socket connection when user is authenticated
     useEffect(() => {

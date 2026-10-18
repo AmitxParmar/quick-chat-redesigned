@@ -32,7 +32,7 @@ export interface IAddMessageResponse {
 
 export async function getMessages(
   conversationId: string,
-  queries?: { page?: number; limit?: number }
+  queries?: { page?: number; limit?: number; cursor?: number }
 ) {
   const res = await api.get(`${API_BASE}/${conversationId}`, {
     params: queries,

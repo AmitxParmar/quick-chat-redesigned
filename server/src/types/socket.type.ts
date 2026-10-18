@@ -17,6 +17,10 @@ export enum SocketEvents {
     JOIN_ROOM = 'room:join',
     LEAVE_ROOM = 'room:leave',
 
+    // Presence subscription events (roster-room scoping)
+    PRESENCE_WATCH = 'presence:watch',
+    PRESENCE_UNWATCH = 'presence:unwatch',
+
     // Message events
     MESSAGE_SEND = 'message:send',
     MESSAGE_STATUS_UPDATED = 'message:status-updated',

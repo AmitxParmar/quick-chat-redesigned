@@ -10,6 +10,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "analyze": "cross-env ANALYZE=true next build --webpack",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
     "start": "next start",
     "lint": "next lint"
   },

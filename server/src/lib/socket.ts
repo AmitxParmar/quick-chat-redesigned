@@ -24,6 +24,18 @@ class SocketService {
     private heartbeatInterval: NodeJS.Timeout | null = null;
 
     /**
+     * Per-socket presence watch sets (roster-room scoping,
+     * PERFORMANCE_ENGINEERING 3.1). Each socket joins `watch:{waId}`
+     * rooms only for users its owner cares about, so presence emits go
+     * to O(watchers) instead of O(all connected sockets).
+     * WeakMap: entries vanish with the socket on disconnect.
+     */
+    private presenceWatch = new WeakMap<object, Set<string>>();
+
+    /** Upper bound so a malicious client can't join unlimited rooms. */
+    private static readonly MAX_PRESENCE_WATCH = 300;
+
+    /**
      * Gets the singleton instance of SocketService
      */
     public static getInstance(): SocketService {
@@ -220,6 +232,30 @@ class SocketService {
             logger.info(`User ${userId} joined conversation room: ${conversationId}`);
         });
 
+        // Presence watch subscription (full-set replace semantics).
+        // The client publishes the waIds it cares about (contacts +
+        // conversation peers + open chat); the server joins `watch:{waId}`
+        // rooms for exactly that set. Re-emitted on every (re)connect
+        // because room membership is per-connection state.
+        socket.on(SocketEvents.PRESENCE_WATCH, (payload: { waIds?: string[] } | string[]) => {
+            const raw = Array.isArray(payload) ? payload : payload?.waIds;
+            this.setPresenceWatch(socket, Array.isArray(raw) ? raw : []);
+        });
+
+        // Incremental unsubscribe (optional; full-set replace covers it).
+        socket.on(SocketEvents.PRESENCE_UNWATCH, (payload: { waIds?: string[] } | string[]) => {
+            const raw = Array.isArray(payload) ? payload : payload?.waIds;
+            if (!Array.isArray(raw)) return;
+            const current = this.presenceWatch.get(socket);
+            if (!current) return;
+            for (const waId of raw) {
+                if (typeof waId === 'string' && current.has(waId)) {
+                    socket.leave(`watch:${waId}`);
+                    current.delete(waId);
+                }
+            }
+        });
+
         // Catch-up sync (PERFORMANCE_ENGINEERING 1.3): after a reconnect the
         // client asks for everything missed since its last stored timestamp.
         // Answered only to the requesting socket; client bulkPut is idempotent.
@@ -261,7 +297,7 @@ class SocketService {
                     // fewer broadcasts than before.
                     if (this.countSocketsForWaId(userWaId) === 0) {
                         await cacheService.setUserOnline(userWaId, false);
-                        this.io?.emit('user:offline', { waId: userWaId, lastSeen: Date.now() });
+                        this.emitPresence(userWaId, 'user:offline', { waId: userWaId, lastSeen: Date.now() });
                     }
                 } catch (e) {
                     logger.error(`Error handling disconnect for ${userWaId}:`, e);
@@ -381,9 +417,51 @@ class SocketService {
                 logger.error(`Failed to set online status for ${userWaId}:`, err)
             );
             if (this.countSocketsForWaId(userWaId) <= 1) {
-                this.io?.emit('user:online', { waId: userWaId });
+                this.emitPresence(userWaId, 'user:online', { waId: userWaId });
             }
         }
+    }
+
+    /**
+     * Replace a socket's presence watch set, joining newly watched
+     * `watch:{waId}` rooms and leaving the rest. Invalid entries are
+     * dropped and the set is capped — the client, not the server, pays
+     * for roster resolution (no DB hit on connect).
+     */
+    private setPresenceWatch(socket: AuthenticatedSocket, waIds: unknown[]): void {
+        const next = new Set(
+            waIds
+                .filter((w): w is string => typeof w === 'string')
+                .map((w) => w.trim())
+                .filter((w) => w.length > 0 && w.length <= 64)
+                .slice(0, SocketService.MAX_PRESENCE_WATCH)
+        );
+
+        const prev = this.presenceWatch.get(socket) ?? new Set<string>();
+        for (const waId of prev) {
+            if (!next.has(waId)) socket.leave(`watch:${waId}`);
+        }
+        for (const waId of next) {
+            if (!prev.has(waId)) socket.join(`watch:${waId}`);
+        }
+        this.presenceWatch.set(socket, next);
+        logger.debug(`Presence watch set for ${socket.user?.waId}: ${next.size} watched`);
+    }
+
+    /**
+     * Scoped presence emit: only sockets watching this waId receive it.
+     * Works cross-instance via the Redis adapter (`io.to(room)`).
+     * Clients that never subscribed (stale versions) get nothing here —
+     * they still have the `user:get-status` lazy-pull fallback.
+     */
+    private emitPresence(
+        waId: string,
+        event: 'user:online' | 'user:offline',
+        payload: { waId: string; lastSeen?: number }
+    ): void {
+        if (!this.io) return;
+        this.io.to(`watch:${waId}`).emit(event, payload);
+        logger.debug(`Emitted ${event} for ${waId} to watch room`);
     }
 
     /**

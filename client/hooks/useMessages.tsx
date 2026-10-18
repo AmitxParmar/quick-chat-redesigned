@@ -2,7 +2,7 @@ import {
   IAddMessageRequest,
 } from "@/services/message.service";
 import { Message, MessageWithQueue } from "@/types";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { SocketEvents } from "@/types/socket-events";
 import { socketService } from "@/services/socket.service";
 import { liveQuery } from "dexie";
@@ -21,7 +21,14 @@ const getSocket = () => socketService.getSocket();
 /**
  * Hook to manage and observe messages for a specific conversation.
  * Uses Dexie for local persistence and real-time updates via sockets.
- * 
+ *
+ * Pagination is keyset/cursor-based (PERFORMANCE_ENGINEERING 3.5):
+ * - Initial window: newest `pageSize` messages, no offset scan.
+ * - "Load more" steps a lower-bound cursor down to the oldest message of
+ *   the next older batch; the live query window is always `[cursor, ...]`,
+ *   so new arrivals and older pages stay contiguous (no skip/duplicate
+ *   windows while messages arrive).
+ *
  * @param conversationId - The ID of the conversation to fetch messages for.
  * @returns An object containing messages, loading state, and pagination controls.
  */
@@ -44,12 +51,12 @@ export function useMessages(conversationId: string) {
       const { messageQueueService } = await import('@/services/message-queue.service');
 
       const handleOnline = () => {
-        console.log('[useMessages] Network online - notifying queue service');
+        process.env.NODE_ENV === "development" && console.log('[useMessages] Network online - notifying queue service');
         messageQueueService.setNetworkStatus(true);
       };
 
       const handleOffline = () => {
-        console.log('[useMessages] Network offline - notifying queue service');
+        process.env.NODE_ENV === "development" && console.log('[useMessages] Network offline - notifying queue service');
         messageQueueService.setNetworkStatus(false);
       };
 
@@ -69,75 +76,77 @@ export function useMessages(conversationId: string) {
     updateQueueNetworkStatus();
   }, []);
 
-  // --- Infinite Scroll Logic (Page-based LiveQuery) ---
+  // --- Infinite Scroll Logic (keyset cursor) ---
 
-  // Create a liveQuery observable for a specific page
-  const createLiveQuery = useCallback((pageNo: number) => liveQuery(
-    () => messageDexieService.getMessages(conversationId, pageSize, pageNo * pageSize)
-  ), [conversationId, pageSize]);
+  // Lower bound of the live message window. null = newest `pageSize`
+  // messages only; loading older moves the bound down.
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [hasNextPage, setHasNextPage] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  // Current ongoing queries (one per "page")
-  // Initialize with the first page (offset 0)
-  const [liveQueries, setLiveQueries] = useState(() => [createLiveQuery(0)]);
+  // Reset pagination synchronously during render when the conversation
+  // changes — prevents a stale-cursor query against the new conversation.
+  const [prevConversationId, setPrevConversationId] = useState(conversationId);
+  if (prevConversationId !== conversationId) {
+    setPrevConversationId(conversationId);
+    setCursor(null);
+    setMessages([]);
+    setHasNextPage(true);
+    setIsInitialLoading(true);
+  }
 
-  // Current set of result sets (one result set per page)
-  const [resultArrays, setResultArrays] = useState<Message[][]>([]);
-
-  // Subscribe to all liveQueries
+  // Subscribe to the live window `[cursor, ∞)` (or newest page while null).
+  // Re-subscribes only when the conversation or cursor changes, so live
+  // inserts flow through without gaps.
   useEffect(() => {
-    // metadata tracking to avoid state updates if component unmounts
     let isMounted = true;
+    setIsInitialLoading(true);
 
-    const subscriptions = liveQueries.map((q, i) => q.subscribe(
+    const query =
+      cursor === null
+        ? () => messageDexieService.getRecentMessages(conversationId, pageSize)
+        : () => messageDexieService.getMessagesSince(conversationId, cursor);
+
+    const subscription = liveQuery(query).subscribe(
       (results: Message[]) => {
         if (!isMounted) return;
-        setResultArrays(prev => {
-          const newArrays = [...prev];
-          newArrays[i] = results;
-          return newArrays;
-        });
+        setMessages(results);
+        setIsInitialLoading(false);
+        // Initial window shorter than a page = no older history to load.
+        if (cursor === null && results.length < pageSize) {
+          setHasNextPage(false);
+        }
       },
-      (error: any) => console.error(`Error in liveQuery page ${i}:`, error)
-    ));
+      (error: unknown) => console.error(`Error loading messages:`, error)
+    );
 
     return () => {
       isMounted = false;
-      subscriptions.forEach(s => s.unsubscribe());
+      subscription.unsubscribe();
     };
-  }, [liveQueries]); // limiting dependencies to avoid re-subscription loops
+  }, [conversationId, cursor, pageSize]);
 
-  // Re-initialize when conversationId changes
-  useEffect(() => {
-    setLiveQueries([createLiveQuery(0)]);
-    setResultArrays([]);
-  }, [conversationId, createLiveQuery]);
+  const fetchNextPage = useCallback(async () => {
+    if (messages.length === 0) return;
+    const oldestTs = messages[0].timestamp;
 
-  const fetchNextPage = useCallback(() => {
-    const nextPageNo = liveQueries.length;
-    setLiveQueries(prev => [...prev, createLiveQuery(nextPageNo)]);
-  }, [liveQueries.length, createLiveQuery]);
+    // One-shot keyset step: is there anything below the current window?
+    const hasOlder = await messageDexieService.hasMessagesBefore(conversationId, oldestTs);
+    if (!hasOlder) {
+      setHasNextPage(false);
+      return;
+    }
 
-  // Flatten results for UI
-  // Note: resultArrays are [Page0(Newest), Page1(Older), ...]
-  // But inside each page, messages are Oldest->Newest (from service)
-  // We want to display them chronologically: PageN...Page1...Page0
-  // So we reverse the pages order, then flat map?
-  // Wait, service returns: `messages.reverse()` (Oldest->Newest).
-  // Example: 
-  // Page 0 (Offset 0-50 newest): [Msg45..Msg50]
-  // Page 1 (Offset 50-100 older): [Msg0..Msg5]
-  // We want [Msg0..Msg5, ..., Msg45..Msg50]
-  // So we need to reverse the PAGE order (Page 1 then Page 0) before flattening?
-  // Yes: [...resultArrays].reverse().flat() should give [Oldest...Newest]
-  const messages = useMemo(() => {
-    // copying to avoid mutating state array
-    return [...resultArrays].reverse().flat();
-  }, [resultArrays]);
-
-  const totalLoaded = messages.length;
-  // If the last page (highest offset) returns fewer items than pageSize, we reached the end
-  const hasNextPage = resultArrays.length > 0 && resultArrays[resultArrays.length - 1]?.length === pageSize;
-
+    // Fetch the next older batch only to find the new lower bound, then
+    // let the live query re-subscribe to the widened window.
+    const older = await messageDexieService.getMessagesBefore(conversationId, oldestTs, pageSize);
+    if (older.length === 0) {
+      setHasNextPage(false);
+      return;
+    }
+    setCursor(older[0].timestamp);
+  }, [messages, conversationId, pageSize]);
 
   // --- Real-time & Socket Logic ---
 
@@ -149,7 +158,7 @@ export function useMessages(conversationId: string) {
     socket.emit(SocketEvents.CONVERSATION_JOIN, conversationId);
 
     const onConnect = () => {
-      console.log("Socket connected, checking for pending messages...");
+      process.env.NODE_ENV === "development" && console.log("Socket connected, checking for pending messages...");
       // Re-join: server-side rooms are lost on every reconnect, so
       // status/read-receipt events addressed to the conversation room
       // would silently stop until remount without this.
@@ -201,7 +210,7 @@ export function useMessages(conversationId: string) {
     async function retryPendingMessages() {
       const pending = await messageDexieService.getPendingMessages(conversationId);
       if (pending.length > 0) {
-        console.log(`Resending ${pending.length} pending messages...`);
+        process.env.NODE_ENV === "development" && console.log(`Resending ${pending.length} pending messages...`);
         pending.forEach(msg => {
           // Re-emit message:send
           socket.emit(SocketEvents.MESSAGE_SEND, msg);
@@ -235,7 +244,7 @@ export function useMessages(conversationId: string) {
 
   return {
     messages,
-    isLoading: resultArrays.length === 0 && liveQueries.length > 0 && messages.length === 0, // Initial loading
+    isLoading: isInitialLoading && messages.length === 0, // Initial loading
     fetchNextPage,
     hasNextPage,
   };

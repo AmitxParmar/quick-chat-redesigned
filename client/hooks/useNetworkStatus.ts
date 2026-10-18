@@ -44,7 +44,7 @@ export function useNetworkStatus(): NetworkStatus {
     useEffect(() => {
         // Handler for when browser comes online
         const handleOnline = () => {
-            console.log('[useNetworkStatus] Network online');
+            process.env.NODE_ENV === "development" && console.log('[useNetworkStatus] Network online');
             setIsOnline(true);
             setWasOffline(true);
 
@@ -54,7 +54,7 @@ export function useNetworkStatus(): NetworkStatus {
 
         // Handler for when browser goes offline
         const handleOffline = () => {
-            console.log('[useNetworkStatus] Network offline');
+            process.env.NODE_ENV === "development" && console.log('[useNetworkStatus] Network offline');
             setIsOnline(false);
             setWasOffline(false);
         };

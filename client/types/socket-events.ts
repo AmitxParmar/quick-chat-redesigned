@@ -7,6 +7,8 @@ export enum SocketEvents {
     USER_STATUS = "user:status",
     USER_ONLINE = "user:online",
     USER_OFFLINE = "user:offline",
+    PRESENCE_WATCH = "presence:watch",
+    PRESENCE_UNWATCH = "presence:unwatch",
 
     // Conversation events
     CONVERSATION_JOIN = "conversation:join",

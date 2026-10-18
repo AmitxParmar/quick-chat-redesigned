@@ -15,7 +15,7 @@ export const usePushNotifications = () => {
             // Register Service Worker
             navigator.serviceWorker.register('/sw.js')
                 .then(registration => {
-                    console.log('Service Worker registered with scope:', registration.scope);
+                    process.env.NODE_ENV === "development" && console.log('Service Worker registered with scope:', registration.scope);
                 })
                 .catch(error => {
                     console.error('Service Worker registration failed:', error);
@@ -67,7 +67,7 @@ export const usePushNotifications = () => {
             // Check for existing subscription
             const existingSub = await registration.pushManager.getSubscription();
             if (existingSub) {
-                console.log('[usePushNotifications] Found existing subscription, unsubscribing to ensure fresh key...');
+                process.env.NODE_ENV === "development" && console.log('[usePushNotifications] Found existing subscription, unsubscribing to ensure fresh key...');
                 await existingSub.unsubscribe();
             }
 
@@ -76,7 +76,7 @@ export const usePushNotifications = () => {
                 applicationServerKey: urlBase64ToUint8Array(PUBLIC_VAPID_KEY)
             });
 
-            console.log('[usePushNotifications] Subscription object:', sub);
+            process.env.NODE_ENV === "development" && console.log('[usePushNotifications] Subscription object:', sub);
 
             setSubscription(sub);
             setIsSubscribed(true);
@@ -84,13 +84,13 @@ export const usePushNotifications = () => {
 
             // Send subscription to backend
             const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/development";
-            console.log(`[usePushNotifications] Sending subscription to: ${apiUrl}/users/subscribe`);
+            process.env.NODE_ENV === "development" && console.log(`[usePushNotifications] Sending subscription to: ${apiUrl}/users/subscribe`);
 
             await axios.post(`${apiUrl}/users/subscribe`, sub, {
                 withCredentials: true
             });
 
-            console.log('Push subscription successful');
+            process.env.NODE_ENV === "development" && console.log('Push subscription successful');
         } catch (error) {
             console.error('Failed to subscribe to push', error);
         }

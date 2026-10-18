@@ -40,6 +40,14 @@ const virtualizer = useVirtualizer({
 - Messages render from local cache instantly
 - Network requests happen in background
 
+### Service Worker
+
+- `public/sw.js` handles push notifications **and** runtime caching.
+- `/_next/static/*` is cached cache-first (immutable, content-hashed).
+- Navigations are network-first with cached fallback to `/`.
+- Images/fonts are stale-while-revalidate with bounded cache sizes.
+- API routes and RSC payloads are deliberately not cached.
+
 ## Server Performance
 
 ### Caching

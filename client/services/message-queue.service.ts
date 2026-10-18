@@ -53,7 +53,7 @@ class MessageQueueService {
         await this.restorePendingMessages();
 
         this.initialized = true;
-        console.log('[MessageQueueService] Initialization complete');
+        process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Initialization complete');
     }
 
     /**
@@ -63,17 +63,17 @@ class MessageQueueService {
         const socket = socketService.getSocket();
 
         socket.on('connect', () => {
-            console.log('[MessageQueueService] Socket connected - resuming queue');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Socket connected - resuming queue');
             this.setNetworkStatus(true);
         });
 
         socket.on('disconnect', () => {
-            console.log('[MessageQueueService] Socket disconnected - pausing queue');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Socket disconnected - pausing queue');
             this.setNetworkStatus(false);
         });
 
         socket.on('connect_error', () => {
-            console.log('[MessageQueueService] Socket connection error - pausing queue');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Socket connection error - pausing queue');
             this.setNetworkStatus(false);
         });
 
@@ -108,14 +108,14 @@ class MessageQueueService {
             }
         );
 
-        console.log('[MessageQueueService] AsyncQueuer created');
+        process.env.NODE_ENV === "development" && console.log('[MessageQueueService] AsyncQueuer created');
     }
 
     /**
      * Process a single message with retry logic
      */
     private async processMessage(message: MessageWithQueue): Promise<void> {
-        console.log('[MessageQueueService] Processing message:', message.id);
+        process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Processing message:', message.id);
 
         // Update status to sending
         await messageDexieService.updateMessageStatus(message.id, 'sending');
@@ -136,7 +136,7 @@ class MessageQueueService {
                 await this.sendViaSocket(message);
 
                 // Success!
-                console.log(`[MessageQueueService] Message sent on attempt ${attempt + 1}:`, message.id);
+                process.env.NODE_ENV === "development" && console.log(`[MessageQueueService] Message sent on attempt ${attempt + 1}:`, message.id);
                 return;
 
             } catch (error) {
@@ -146,7 +146,7 @@ class MessageQueueService {
                 // If not the last attempt, wait with exponential backoff
                 if (attempt < maxAttempts - 1) {
                     const backoffMs = this.calculateBackoff(attempt);
-                    console.log(`[MessageQueueService] Retrying in ${backoffMs}ms...`);
+                    process.env.NODE_ENV === "development" && console.log(`[MessageQueueService] Retrying in ${backoffMs}ms...`);
                     await this.sleep(backoffMs);
                 }
             }
@@ -252,7 +252,7 @@ class MessageQueueService {
             const pendingMessages = await messageDexieService.getPendingMessagesForQueue();
 
             if (pendingMessages.length > 0) {
-                console.log(`[MessageQueueService] Restoring ${pendingMessages.length} pending messages`);
+                process.env.NODE_ENV === "development" && console.log(`[MessageQueueService] Restoring ${pendingMessages.length} pending messages`);
 
                 for (const message of pendingMessages) {
                     await this.enqueueMessage(message);
@@ -275,13 +275,13 @@ class MessageQueueService {
         // Check for duplicate
         const existingMessages = this.queuer.peekAllItems();
         if (existingMessages.some(m => m.id === message.id)) {
-            console.log('[MessageQueueService] Message already in queue:', message.id);
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Message already in queue:', message.id);
             return;
         }
 
         // Add to queue
         this.queuer.addItem(message);
-        console.log('[MessageQueueService] Message enqueued:', message.id);
+        process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Message enqueued:', message.id);
 
         this.emitStateChange();
     }
@@ -311,7 +311,7 @@ class MessageQueueService {
             // Re-enqueue
             await this.enqueueMessage(failedMessage);
 
-            console.log('[MessageQueueService] Message retry initiated:', messageId);
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Message retry initiated:', messageId);
         } catch (error) {
             console.error('[MessageQueueService] Error retrying message:', error);
         }
@@ -408,11 +408,11 @@ class MessageQueueService {
 
         if (isOnline && !wasOnline) {
             // Just came online - resume queue
-            console.log('[MessageQueueService] Network online - resuming queue');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Network online - resuming queue');
             this.queuer.start();
         } else if (!isOnline && wasOnline) {
             // Just went offline - pause queue
-            console.log('[MessageQueueService] Network offline - pausing queue');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Network offline - pausing queue');
             this.queuer.stop();
         }
 
@@ -425,7 +425,7 @@ class MessageQueueService {
     pause(): void {
         if (this.queuer) {
             this.queuer.stop();
-            console.log('[MessageQueueService] Queue paused');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Queue paused');
             this.emitStateChange();
         }
     }
@@ -436,7 +436,7 @@ class MessageQueueService {
     resume(): void {
         if (this.queuer) {
             this.queuer.start();
-            console.log('[MessageQueueService] Queue resumed');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Queue resumed');
             this.emitStateChange();
         }
     }
@@ -447,7 +447,7 @@ class MessageQueueService {
     async clear(): Promise<void> {
         if (this.queuer) {
             this.queuer.clear();
-            console.log('[MessageQueueService] Queue cleared');
+            process.env.NODE_ENV === "development" && console.log('[MessageQueueService] Queue cleared');
             this.emitStateChange();
         }
     }

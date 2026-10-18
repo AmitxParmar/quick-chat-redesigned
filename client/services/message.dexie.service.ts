@@ -18,19 +18,58 @@ class MessageDexieService {
     }
 
     /**
-     * Get messages for a conversation
+     * Newest `limit` messages for a conversation (initial window).
+     * Uses the compound index — no offset scan.
      */
-    async getMessages(conversationId: string, limit = 50, offset = 0) {
+    async getRecentMessages(conversationId: string, limit = 50) {
         const messages = await getDb().messages
             .where('[conversationId+timestamp]')
             .between([conversationId, -Infinity], [conversationId, Infinity])
             .reverse() // Start from newest (largest timestamp)
-            .offset(offset)
             .limit(limit)
             .toArray();
 
         // Return them in chronological order (oldest -> newest) for the UI
         return messages.reverse();
+    }
+
+    /**
+     * Live window: all messages with timestamp >= `since`, chronological.
+     * The window lower bound only ever moves down when loading older pages,
+     * so new arrivals and previously loaded messages stay contiguous.
+     */
+    async getMessagesSince(conversationId: string, since: number) {
+        return await getDb().messages
+            .where('[conversationId+timestamp]')
+            .between([conversationId, since], [conversationId, Infinity], true, true)
+            .toArray();
+    }
+
+    /**
+     * Keyset "load older" step: newest `limit` messages strictly before
+     * `before`, chronological. Returns [] when history is exhausted.
+     */
+    async getMessagesBefore(conversationId: string, before: number, limit = 50) {
+        const messages = await getDb().messages
+            .where('[conversationId+timestamp]')
+            .between([conversationId, -Infinity], [conversationId, before], true, false)
+            .reverse()
+            .limit(limit)
+            .toArray();
+
+        return messages.reverse();
+    }
+
+    /**
+     * Whether any message exists strictly before `before` (drives hasNextPage).
+     */
+    async hasMessagesBefore(conversationId: string, before: number): Promise<boolean> {
+        const row = await getDb().messages
+            .where('[conversationId+timestamp]')
+            .between([conversationId, -Infinity], [conversationId, before], true, false)
+            .limit(1)
+            .toArray();
+        return row.length > 0;
     }
 
     /**
@@ -71,11 +110,15 @@ class MessageDexieService {
 
     /**
      * Get pending messages for a specific user (status = 'sent')
-     * Used for retrying delivery when user comes online
+     * Used for retrying delivery when user comes online.
+     * Uses the `status` index first, then filters by recipient — so the
+     * per-presence-event cost scales with pending sends, not the whole table.
      */
     async getPendingMessages(userWaId: string) {
         return await getDb().messages
-            .filter(msg => msg.to === userWaId && msg.status === 'sent')
+            .where('status')
+            .equals('sent')
+            .filter(msg => msg.to === userWaId)
             .toArray();
     }
 

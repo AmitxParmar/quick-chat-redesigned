@@ -233,7 +233,7 @@ export function useAutoMarkAsRead() {
       // Prevent if unreadCount is already 0 (optional, but safer)
       // (You may want to pass unreadCount as an argument for more robust logic.)
 
-      console.log(
+      process.env.NODE_ENV === "development" && console.log(
         "Auto marking messages as read for conversation:",
         conversationId
       );

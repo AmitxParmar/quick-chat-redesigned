@@ -24,9 +24,18 @@ export default class MessageController extends Api {
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 25;
 
+            // Keyset cursor (timestamp) for older-history pages. Accepts
+            // either ?cursor= or ?before=; falls back to page-based mode.
+            const rawCursor = (req.query.cursor ?? req.query.before) as string | undefined;
+            const before = rawCursor !== undefined ? parseInt(rawCursor, 10) : undefined;
+
             const result = await this.messageService.getMessages(
                 conversationId,
-                { page, limit },
+                {
+                    page,
+                    limit,
+                    ...(before !== undefined && Number.isFinite(before) ? { before } : {}),
+                },
                 {
                     userWaId: req.user!.waId,
                 }
