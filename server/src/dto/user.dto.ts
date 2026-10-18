@@ -26,9 +26,9 @@ export class LoginDto {
   @IsNotEmpty({ message: 'WhatsApp ID is required' })
   waId: string;
 
-  @IsOptional()
   @IsString()
-  password?: string;
+  @IsNotEmpty({ message: 'Password is required' })
+  password: string;
 }
 
 export class UpdateProfileDto {

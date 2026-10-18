@@ -3,6 +3,7 @@ import Controller from './auth.controller';
 import { RegisterDto, LoginDto, UpdateProfileDto } from '@/dto/user.dto';
 import RequestValidator from '@/middlewares/request-validator';
 import { verifyAuthToken } from '@/middlewares/auth';
+import { authLimiter } from '@/middlewares/rate-limiter';
 
 const auth: Router = Router();
 const controller = new Controller();
@@ -39,6 +40,7 @@ const controller = new Controller();
  */
 auth.post(
   '/register',
+  authLimiter,
   RequestValidator.validate(RegisterDto),
   controller.register
 );
@@ -50,7 +52,7 @@ auth.post(
  * @param {LoginBody} request.body.required
  * @return {User} 200 - login successful with tokens in cookies
  */
-auth.post('/login', RequestValidator.validate(LoginDto), controller.login);
+auth.post('/login', authLimiter, RequestValidator.validate(LoginDto), controller.login);
 
 /**
  * POST /auth/logout

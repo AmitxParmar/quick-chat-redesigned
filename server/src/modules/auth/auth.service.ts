@@ -13,7 +13,7 @@ export interface RegisterInput {
 
 export interface LoginInput {
   waId: string;
-  password?: string;
+  password: string;
 }
 
 export interface AuthResult {
@@ -92,19 +92,23 @@ export default class AuthService {
 
     // Find user
     const user = await authRepository.findUserByWaId(normalizedWaId);
-    if (!user) {
-      throw new HttpNotFoundError('User not found');
+
+    // Fail closed: unknown user, missing/empty password, and wrong password
+    // all return the same 401 — this also prevents user enumeration.
+    const passwordSupplied =
+      typeof data.password === 'string' && data.password.length > 0;
+
+    if (!user || !passwordSupplied) {
+      throw new HttpUnAuthorizedError('Invalid credentials');
     }
 
-    // Verify password (if provided - for backward compatibility)
-    if (data.password) {
-      const isPasswordValid = await authRepository.comparePassword(
-        user,
-        data.password
-      );
-      if (!isPasswordValid) {
-        throw new HttpUnAuthorizedError('Invalid password');
-      }
+    // The password is always verified — no condition may skip this step.
+    const isPasswordValid = await authRepository.comparePassword(
+      user,
+      data.password
+    );
+    if (!isPasswordValid) {
+      throw new HttpUnAuthorizedError('Invalid credentials');
     }
 
     // Generate tokens

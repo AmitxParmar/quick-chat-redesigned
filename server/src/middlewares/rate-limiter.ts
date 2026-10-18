@@ -64,3 +64,21 @@ export const searchLimiter = rateLimit({
     skip: () => false,
     validate: false,
 });
+
+/**
+ * Auth Rate Limiter
+ * Strict per-IP limit for the credential endpoints (login/register).
+ * 10 attempts per 15 minutes per IP blunts brute-force and
+ * credential-stuffing attempts without affecting normal logins.
+ */
+export const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10, // 10 attempts per 15 minutes per IP
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        status: 429,
+        message: "Too many attempts from this IP, please try again after 15 minutes",
+    },
+    skip: () => false, // Always enforce, even in dev
+});
