@@ -10,6 +10,7 @@ import { cleanEnv } from 'envalid';
 import { EnvironmentFile, Environments } from '@/enums/environment.enum';
 import envValidationConfig from '@/config/env-validation.config';
 import { type CommonEnvKeys } from '@/types/environment.type';
+import { resolveAllowedOrigins } from '@/lib/cors-origins';
 import appConfig from '@/config/app.config';
 
 export interface IEnvironment {
@@ -24,6 +25,7 @@ class Environment implements IEnvironment {
   private _env: Environments;
   private _appUrl: string;
   private _clientUrl: string;
+  private _allowedOrigins: string[] = [];
 
   constructor() {
     this.port = Number(process.env.PORT) ?? appConfig.defaultPort;
@@ -62,6 +64,19 @@ class Environment implements IEnvironment {
     this._clientUrl = value;
   }
 
+  /**
+   * Every origin allowed to call the API with credentials — `CLIENT_URL` plus
+   * the comma-separated `ALLOWED_ORIGINS`, normalised and de-duplicated.
+   * Shared by the HTTP CORS middleware and the Socket.IO handshake.
+   */
+  get allowedOrigins(): string[] {
+    return this._allowedOrigins;
+  }
+
+  set allowedOrigins(value: string[]) {
+    this._allowedOrigins = value;
+  }
+
   private resolveEnvPath(key: CommonEnvKeys): string {
     // On priority bar, .env.[NODE_ENV] has higher priority than default env file (.env)
     // If both are not resolved, error is thrown.
@@ -76,6 +91,16 @@ class Environment implements IEnvironment {
     this.port = env.PORT;
     this.appUrl = env.APP_BASE_URL;
     this.clientUrl = env.CLIENT_URL;
+    this.allowedOrigins = resolveAllowedOrigins(env.CLIENT_URL, env.ALLOWED_ORIGINS);
+
+    if (this.isProd() && !process.env.CLIENT_URL && !env.ALLOWED_ORIGINS) {
+      // console, not the winston logger: logger imports this module, so
+      // importing it back here would create a circular dependency.
+      console.warn(
+        `[cors] Neither CLIENT_URL nor ALLOWED_ORIGINS is set; only ${this.clientUrl} ` +
+          'is allowed. Requests from the deployed frontend will be rejected with 403.'
+      );
+    }
   }
 
   public setEnvironment(env = Environments.DEV): void {

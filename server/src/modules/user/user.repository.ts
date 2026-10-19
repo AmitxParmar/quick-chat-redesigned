@@ -1,8 +1,9 @@
 import prisma from '@/lib/prisma';
 import { User, Prisma } from '@prisma/client';
+import { type PublicUser } from '@/types/user.type';
 
 export class UserRepository {
-    public async findAll(search?: string, userId?: User['id']): Promise<Omit<User, 'password'>[]> {
+    public async findAll(search?: string, userId?: User['id']): Promise<PublicUser[]> {
         const where: Prisma.UserWhereInput = search ? {
             OR: [
                 { name: { contains: search, mode: 'insensitive' as const } },
@@ -26,7 +27,6 @@ export class UserRepository {
                 profilePicture: true,
                 lastSeen: true,
                 isOnline: true,
-                refreshToken: true,
                 createdAt: true,
                 updatedAt: true,
             }

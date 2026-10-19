@@ -7,6 +7,7 @@ import authRepository from '@/modules/auth/auth.repository';
 import logger from '@/lib/logger';
 import cacheService, { CacheKeys, CacheTTL } from '@/lib/cache';
 import environment from '@/lib/environment';
+import { isOriginAllowed } from '@/lib/cors-origins';
 import { chatQueue } from '@/lib/queue';
 import messageRepository from '@/modules/message/message.repository';
 import {
@@ -53,7 +54,15 @@ class SocketService {
     public async initialize(httpServer: HttpServer): Promise<Server> {
         this.io = new Server(httpServer, {
             cors: {
-                origin: environment.clientUrl,
+                // Same allow-list as the HTTP API, so a preview deployment that
+                // can log in can also open a socket.
+                origin: (origin, callback) => {
+                    if (!origin) return callback(null, true);
+                    if (isOriginAllowed(origin, environment.allowedOrigins)) {
+                        return callback(null, true);
+                    }
+                    return callback(new Error(`Origin not allowed: ${origin}`));
+                },
                 credentials: true,
             },
             perMessageDeflate: false,

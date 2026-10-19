@@ -53,6 +53,7 @@ const fakeUser = {
   id: 'user-1',
   waId: '919999999999',
   password: 'stored-password-hash',
+  refreshToken: 'stored-refresh-token',
 } as User;
 
 describe('[Unit] - LoginDto (password is required)', () => {
@@ -149,5 +150,6 @@ describe('[Unit] - AuthService.login (verification cannot be skipped)', () => {
       refreshToken: 'refresh-token',
     });
     expect(result.user).not.toHaveProperty('password');
+    expect(result.user).not.toHaveProperty('refreshToken');
   });
 });

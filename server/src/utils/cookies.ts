@@ -1,4 +1,5 @@
 import type { Response, CookieOptions } from 'express';
+import environment from '@/lib/environment';
 
 
 export class CookieService {
@@ -6,7 +7,12 @@ export class CookieService {
         return {
             httpOnly: true,
             secure: true,
-            sameSite: 'lax',
+            // The deployed frontend (vercel.app) and the API (onrender.com) are
+            // different sites. `lax` cookies are never sent on cross-site
+            // XHR/fetch requests or WebSocket handshakes, so the session cookie
+            // never reached the API. Cross-site credentials require `none`
+            // together with `secure`.
+            sameSite: environment.isProd() ? 'none' : 'lax',
             maxAge,
             path: '/',
         };

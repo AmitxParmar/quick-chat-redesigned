@@ -22,14 +22,21 @@
 ### Cookie Security
 
 ```typescript
-// server/src/modules/auth/auth.service.ts
-res.cookie('refreshToken', refreshToken, {
-  httpOnly: true,      // Not accessible via JavaScript
-  secure: true,        // HTTPS only
-  sameSite: 'strict',  // CSRF protection
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+// server/src/utils/cookies.ts — CookieService.setTokenCookies()
+res.cookie('access_token', accessToken, {
+  httpOnly: true,   // not accessible to JavaScript
+  secure: true,     // HTTPS only
+  // The deployed frontend (vercel.app) and API (onrender.com) are different
+  // sites, so browsers only attach the credentials to SameSite=None cookies.
+  // Development stays same-site on localhost, where Lax is correct.
+  sameSite: environment.isProd() ? 'none' : 'lax',
+  maxAge: 15 * 60 * 1000,
+  path: '/',
 });
 ```
+
+The same options are used for `refresh_token` (7-day `maxAge`) and for
+`clearTokenCookies()`, so logout removes them with matching attributes.
 
 ## Input Validation
 
@@ -77,7 +84,9 @@ Prisma ORM parameterizes all queries automatically. Raw queries are avoided.
 
 ### CSRF (Cross-Site Request Forgery)
 
-- SameSite=Strict cookies
+- `SameSite=None; Secure` cookies (the SPA and API are on different sites in
+  production). CSRF is blocked by the server-side origin allow-list, which
+  rejects disallowed origins with `403` before any route runs.
 - CORS restricted to known origins
 - Socket.io origin validation
 
@@ -112,15 +121,31 @@ app.use(helmet({
 
 ### CORS Configuration
 
+The allow-list is `CLIENT_URL` plus the optional comma-separated
+`ALLOWED_ORIGINS`. Entries are normalised (trimmed, trailing slashes removed,
+lowercased) and `*` may be used inside an entry to cover per-deployment preview
+URLs. A standalone `*` is ignored so a wildcard cannot silently allow every site
+to send credentialed requests.
+
 ```typescript
-// server/src/lib/app.ts
-app.use(cors({
-  origin: allowedOrigins,
+// server/src/app.ts
+this.express.use(cors({
+  origin: (origin, callback) => {
+    // No Origin header => not a browser cross-origin request (curl, probes,
+    // server-to-server). CORS is browser-enforced, so let those through.
+    if (!origin) return callback(null, true);
+    if (isOriginAllowed(origin, environment.allowedOrigins)) {
+      return callback(null, true);
+    }
+    // 403 (not 500) so a misconfigured allow-list is unmistakable.
+    return callback(new HttpForbiddenError(`Origin not allowed: ${origin}`));
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 ```
+
+`server/src/lib/cors-origins.ts` owns the matching logic and the Socket.IO
+handshake uses the same list, so HTTP and WebSocket access can never drift.
 
 ### Trust Proxy
 

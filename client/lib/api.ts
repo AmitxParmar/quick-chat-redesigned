@@ -3,6 +3,7 @@ import type { AuthErrorCode, ApiErrorResponse } from "@/types";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { clearSessionMark } from "@/lib/session";
 
 /**
  * Extended axios request config with retry flag
@@ -16,6 +17,16 @@ interface ExtendedAxiosRequestConfig extends InternalAxiosRequestConfig {
  */
 const getErrorCode = (error: AxiosError<ApiErrorResponse>): AuthErrorCode | undefined => {
   return error.response?.data?.code;
+};
+
+/**
+ * Drop the first-party session hint before sending the user to /login.
+ * Without this, middleware would bounce them straight back to the chat page.
+ */
+const redirectToLogin = () => {
+  if (typeof window === "undefined") return;
+  clearSessionMark();
+  window.location.href = "/login";
 };
 
 const api = axios.create({
@@ -67,18 +78,14 @@ api.interceptors.response.use(
         refreshSubscribers = [];
         // Clear all cached data
         queryClient?.clear();
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
+        redirectToLogin();
         return Promise.reject(error);
       }
 
       if (config?._retry) {
         // Already retried once, do not loop
         queryClient?.clear();
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
+        redirectToLogin();
         return Promise.reject(error);
       }
 
@@ -113,9 +120,7 @@ api.interceptors.response.use(
         queryClient?.clear();
 
         // Refresh failed, redirect to login
-        if (typeof window !== "undefined") {
-          window.location.href = "/login";
-        }
+        redirectToLogin();
         return Promise.reject(refreshError);
       }
     }
@@ -132,7 +137,7 @@ api.interceptors.response.use(
       // Clear all cached data
       queryClient?.clear();
       if (typeof window !== "undefined") {
-        window.location.href = "/login";
+        redirectToLogin();
       }
     } else if (response?.status !== 401) {
       // Show error toast for non-401 errors (e.g. 400, 403, 404, 500)

@@ -25,16 +25,56 @@
 | `JWT_REFRESH_SECRET` | Yes | Refresh token signing secret |
 | `JWT_ACCESS_EXPIRY` | Yes | Access token lifetime (e.g., `15m`) |
 | `JWT_REFRESH_EXPIRY` | Yes | Refresh token lifetime (e.g., `7d`) |
-| `CLIENT_URL` | Yes | Frontend URL for CORS |
+| `CLIENT_URL` | Yes | Primary frontend origin allowed to call the API (trailing slashes are stripped) |
 | `SWAGGER_ENABLED` | No | Enable Swagger UI (default: `false`) |
-| `ALLOWED_ORIGINS` | No | Comma-separated allowed origins |
+| `ALLOWED_ORIGINS` | No | Extra origins, comma-separated. `*` is allowed inside an entry for previews, e.g. `https://my-app-*.vercel.app` |
 
 ### Client
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_API_URL` | No | Backend API URL (default: `http://localhost:8000`) |
-| `NEXT_PUBLIC_WS_URL` | No | WebSocket server URL (default: `ws://localhost:8000`) |
+| `NEXT_PUBLIC_API_BASE_URL` | No | Backend API URL incl. env segment (default: `http://localhost:8000/api/v1/development`) |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | No | Web Push public key |
+| `NEXT_PUBLIC_VITALS_ENDPOINT` | No | Optional Web Vitals reporting endpoint |
+
+### Allowed Origins (CORS)
+
+The API answers browser requests only when the `Origin` header matches
+`CLIENT_URL` or one of the `ALLOWED_ORIGINS`. A mismatch returns
+`403 Origin not allowed: …`; requests with no `Origin` header (curl, health
+checks, server-to-server) pass through, because CORS is browser-enforced.
+Socket.IO handshakes use the same list, so HTTP and WebSocket access never
+drift apart.
+
+Vercel serves one deployment under several URLs (primary domain, per-deployment
+URL, branch aliases), so add a scoped wildcard to keep previews working:
+
+```bash
+CLIENT_URL=https://my-app.vercel.app
+ALLOWED_ORIGINS=https://my-app-*.vercel.app,https://my-app-git-main-me.vercel.app
+```
+
+A standalone `*` is ignored on purpose — with `credentials: true` it would let
+any site send credentialed requests.
+
+### Cross-site cookies and the session hint
+
+When the frontend and API live on different sites (for example `*.vercel.app`
+and `*.onrender.com`), the browser stores the API's `access_token` /
+`refresh_token` cookies against the **API** origin. Two consequences:
+
+- The API must set them with `SameSite=None; Secure` in production, because
+  `Lax` cookies are never sent on cross-site XHR requests or WebSocket
+  handshakes. The server does this automatically when `NODE_ENV=production`
+  (see `server/src/utils/cookies.ts`).
+- `client/middleware.ts` cannot read cookies owned by another origin, so the
+  client writes a first-party `session_hint` cookie after a successful
+  login/register. The hint only drives navigation; every API request is still
+  authorised by the HttpOnly tokens.
+
+Safari's third-party cookie blocking will prevent sign-in while the API is on a
+different site. Serving the API under the frontend's own domain (reverse proxy
+or custom domain) is the durable fix.
 
 ## Quick Start
 

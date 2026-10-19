@@ -10,6 +10,8 @@ const mockLogger = {
 const mockEnvironment = {
     isDev: jest.fn(() => false),
     env: 'TEST',
+    clientUrl: 'http://localhost:3000',
+    allowedOrigins: ['http://localhost:3000'],
 };
 
 const mockEmit = jest.fn();

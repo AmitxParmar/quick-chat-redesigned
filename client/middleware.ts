@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { SESSION_HINT_COOKIE } from '@/lib/session';
 
 // Public routes that don't require authentication
 const publicRoutes = ['/login', '/register'];
@@ -9,7 +10,12 @@ const protectedRoutes = ['/'];
 
 export default function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
-    const accessToken = request.cookies.get('access_token')?.value;
+
+    // The API sets the real auth cookies (HttpOnly) on its own origin, e.g.
+    // onrender.com, so this middleware can never read them. `session_hint` is a
+    // first-party, non-sensitive flag the client writes after a successful
+    // login. It only drives navigation; the API still authorises every request.
+    const hasSessionHint = Boolean(request.cookies.get(SESSION_HINT_COOKIE)?.value);
 
     // Check if this is a public route
     const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
@@ -18,7 +24,7 @@ export default function middleware(request: NextRequest) {
     const isProtectedRoute = !isPublicRoute && protectedRoutes.some(route => pathname.startsWith(route));
 
     // If user is not authenticated and trying to access protected route
-    if (!accessToken && isProtectedRoute) {
+    if (!hasSessionHint && isProtectedRoute) {
         const loginUrl = new URL('/login', request.url);
         // Add redirect parameter so user can be redirected back after login
         loginUrl.searchParams.set('redirect', pathname);
@@ -26,7 +32,7 @@ export default function middleware(request: NextRequest) {
     }
 
     // If user is authenticated and trying to access public route (login/register)
-    if (accessToken && isPublicRoute) {
+    if (hasSessionHint && isPublicRoute) {
         return NextResponse.redirect(new URL('/', request.url));
     }
 

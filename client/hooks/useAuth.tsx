@@ -12,6 +12,7 @@ import {
 } from "@/services/auth.service";
 import type { User, AxiosAuthError, AuthErrorCode } from "@/types";
 import { isAxiosAuthError } from "@/types";
+import { markSessionActive, clearSessionMark } from "@/lib/session";
 
 // Query keys
 export const authKeys = {
@@ -103,6 +104,7 @@ const useAuth = () => {
     if (isUnauthenticated && !isLoading && !isPublicPage) {
       // Clear any cached data to avoid showing stale state
       if (typeof window !== "undefined") {
+        clearSessionMark();
         try {
           router.push("/login");
         } catch {
@@ -143,6 +145,8 @@ export const useLogin = () => {
       if (data.data?.user) {
         // Server sets cookies automatically, just update the user data
         queryClient.setQueryData(authKeys.user(), data.data.user);
+        // First-party hint so middleware can route us to the chat page.
+        markSessionActive();
       }
     },
   });
@@ -169,6 +173,8 @@ export const useRegister = () => {
       if (data.data?.user) {
         // Server sets cookies automatically, just update the user data
         queryClient.setQueryData(authKeys.user(), data.data.user);
+        // First-party hint so middleware can route us to the chat page.
+        markSessionActive();
       }
     },
   });
@@ -183,6 +189,7 @@ export const useLogout = () => {
     onSuccess: () => {
       // Server clears cookies automatically, just clear the cache
       queryClient.clear();
+      clearSessionMark();
       // Redirect to login page
       if (typeof window !== "undefined") {
         window.location.href = "/login";
@@ -191,6 +198,7 @@ export const useLogout = () => {
     onError: () => {
       // Even if logout fails on server, clear local state
       queryClient.clear();
+      clearSessionMark();
       // Still redirect to login page
       if (typeof window !== "undefined") {
         window.location.href = "/login";
@@ -225,6 +233,7 @@ export const useRefreshToken = () => {
           errorCode === "REFRESH_TOKEN_INVALID" ||
           errorCode === "REFRESH_TOKEN_REVOKED"
         ) {
+          clearSessionMark();
           window.location.href = "/login";
         }
       }

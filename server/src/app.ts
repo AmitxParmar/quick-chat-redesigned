@@ -12,6 +12,8 @@ import appConfig from './config/app.config';
 import errorHandler from '@/middlewares/error-handler';
 import routes from '@/modules/index';
 import prismaClient from '@/lib/prisma';
+import { isOriginAllowed } from '@/lib/cors-origins';
+import { HttpForbiddenError } from '@/lib/errors';
 import { apiLimiter } from '@/middlewares/rate-limiter';
 
 class App {
@@ -28,16 +30,23 @@ class App {
   }
 
   private setMiddlewares(): void {
-    const allowedOrigins = [environment.clientUrl];
+    const { allowedOrigins } = environment;
 
     this.express.use(cors({
       origin: (origin, callback) => {
-        if (!origin) return callback(new Error('No CORS origin'));
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
+        // Requests without an Origin header are not browser cross-origin
+        // requests (health checks, curl, server-to-server, probes). CORS is
+        // enforced by browsers, so rejecting these only breaks legitimate
+        // traffic — a browser can never strip its own Origin header.
+        if (!origin) return callback(null, true);
+
+        if (isOriginAllowed(origin, allowedOrigins)) {
+          return callback(null, true);
         }
+
+        // 403 rather than the error handler's default 500: a misconfigured
+        // allow-list should be diagnosable, not look like a server crash.
+        return callback(new HttpForbiddenError(`Origin not allowed: ${origin}`));
       },
       credentials: true,
     }));

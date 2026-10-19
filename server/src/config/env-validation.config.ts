@@ -11,6 +11,7 @@ const envValidationConfig = {
   APP_BASE_URL: str(),
   DATABASE_URL: str(),
   CLIENT_URL: str({ default: 'http://localhost:3000' }),
+  ALLOWED_ORIGINS: str({ default: '' }),
   JWT_ACCESS_SECRET: str(),
   JWT_REFRESH_SECRET: str(),
   JWT_ACCESS_EXPIRY: str({ default: '15m' }),

@@ -4,6 +4,7 @@ import jwtService from '@/lib/jwt';
 import { redis } from '@/lib/redis';
 import { HttpUnAuthorizedError, HttpBadRequestError, HttpNotFoundError } from '@/lib/errors';
 import logger from '@/lib/logger';
+import { type PublicUser } from '@/types/user.type';
 
 export interface RegisterInput {
   waId: string;
@@ -17,7 +18,7 @@ export interface LoginInput {
 }
 
 export interface AuthResult {
-  user: Omit<User, 'password'>;
+  user: PublicUser;
   tokens: {
     accessToken: string;
     refreshToken: string;
@@ -75,8 +76,9 @@ export default class AuthService {
 
     logger.info(`User registered successfully: ${user.id}`);
 
-    // Remove password from response
-    const { password, ...safeUser } = user;
+    // Never echo credentials back: neither the password hash nor the token
+    // stored on the user record may leave the server.
+    const { password, refreshToken: _storedRefreshToken, ...safeUser } = user;
     return {
       user: safeUser,
       tokens: { accessToken, refreshToken },
@@ -133,8 +135,9 @@ export default class AuthService {
 
     logger.info(`User logged in successfully: ${user.id}`);
 
-    // Remove password from response
-    const { password, ...safeUser } = user;
+    // Never echo credentials back: neither the password hash nor the token
+    // stored on the user record may leave the server.
+    const { password, refreshToken: _storedRefreshToken, ...safeUser } = user;
     return {
       user: safeUser,
       tokens: { accessToken, refreshToken },
@@ -162,7 +165,7 @@ export default class AuthService {
   public async refreshTokens(refreshToken: string): Promise<{
     accessToken: string;
     refreshToken: string;
-    user: Omit<User, 'password'>;
+    user: PublicUser;
   }> {
     // 1. Verify token signature first (Stateless check)
     const result = jwtService.verifyRefreshTokenDetailed(refreshToken);
@@ -207,8 +210,9 @@ export default class AuthService {
 
     logger.info(`Tokens refreshed successfully: ${user.id}`);
 
-    // Remove password from response
-    const { password, ...safeUser } = user;
+    // Never echo credentials back: neither the password hash nor the token
+    // stored on the user record may leave the server.
+    const { password, refreshToken: _storedRefreshToken, ...safeUser } = user;
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
@@ -219,11 +223,11 @@ export default class AuthService {
   /**
    * Get current user
    */
-  public async getCurrentUser(userId: string): Promise<Omit<User, 'password'> | null> {
+  public async getCurrentUser(userId: string): Promise<PublicUser | null> {
     const user = await authRepository.findUserById(userId);
     if (!user) return null;
 
-    const { password, ...safeUser } = user;
+    const { password, refreshToken: _storedRefreshToken, ...safeUser } = user;
     return safeUser;
   }
 
@@ -237,10 +241,10 @@ export default class AuthService {
       profilePicture?: string;
       status?: string;
     }
-  ): Promise<Omit<User, 'password'>> {
+  ): Promise<PublicUser> {
     const updatedUser = await authRepository.updateUser(userId, data);
 
-    const { password, ...safeUser } = updatedUser;
+    const { password, refreshToken: _storedRefreshToken, ...safeUser } = updatedUser;
     return safeUser;
   }
 
